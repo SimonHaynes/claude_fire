@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ client_name }} — Retirement Plan</title>
+<style>
+  @font-face {
+    font-family: "Fraunces";
+    font-weight: 500 600;
+    font-style: normal;
+    src: url(data:font/woff2;base64,{{ fraunces_b64 }}) format("woff2");
+  }
+  @font-face {
+    font-family: "Public Sans";
+    font-weight: 400 700;
+    font-style: normal;
+    src: url(data:font/woff2;base64,{{ publicsans_b64 }}) format("woff2");
+  }
+
+  :root {
+    --paper:        #f2f4f3;
+    --card:         #ffffff;
+    --ink:          #12191b;
+    --ink-2:        #4c5a5c;
+    --ink-muted:    #7c8b8d;
+    --accent:       #2c3a63;
+    --accent-soft:  #e7e9f2;
+    --hairline:     #d7ddd9;
+    --good:         #0ca30c;
+    --warning:      #fab219;
+    --critical:     #d03b3b;
+  }
+
+  * { box-sizing: border-box; }
+
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm 18mm;
+    @bottom-center {
+      /* |safe because this is a CSS string, not HTML: an escaped "&amp;"
+         would render literally in the running footer. */
+      content: "{{ client_name|safe }} — Retirement Plan  ·  Page " counter(page) " of " counter(pages);
+      font-family: "Public Sans", sans-serif;
+      font-size: 8.5pt;
+      color: #7c8b8d;
+    }
+  }
+  @page :first {
+    @bottom-center { content: none; }
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Public Sans", system-ui, sans-serif;
+    color: var(--ink);
+    font-size: 10.3pt;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; font-weight: 600; margin: 0; }
+  p { margin: 0 0 8pt; }
+
+  /* Justified prose, hyphenated. Justification without hyphenation opens
+     rivers of white space down a narrow measure, so the two go together --
+     WeasyPrint hyphenates via Pyphen and needs the lang attribute on <html>,
+     which is set. Applied only to running prose: a narrow table cell or a
+     two-word timeline entry justifies into gaps, so those keep ragged-right. */
+  p, .lede, .scenario-card p, .rec-block p, .notes-list li, .goal-list li,
+  .table-caption, .fanchart-caption {
+    text-align: justify;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+  }
+
+  /* Never strand a single line of a paragraph across a page break. */
+  p, .lede, li { orphans: 2; widows: 2; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { font-variant-numeric: tabular-nums; }
+
+  /* ---- Cover ---- */
+  .cover {
+    height: 235mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .cover-top { margin-top: 40mm; }
+  .cover-eyebrow {
+    font-size: 10.5pt; font-weight: 600; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 10pt;
+  }
+  .cover-title { font-size: 30pt; line-height: 1.15; max-width: 90mm; }
+  .cover-sub { color: var(--ink-2); font-size: 11.5pt; margin-top: 12pt; max-width: 100mm; }
+  .cover-bottom { font-size: 9pt; color: var(--ink-muted); border-top: 1px solid var(--hairline); padding-top: 8pt; }
+
+  /* ---- Sections ---- */
+  .section { page-break-before: always; }
+  .section:first-of-type { page-break-before: avoid; }
+  .section-eyebrow {
+    font-size: 9.5pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4pt;
+  }
+  .section-title { font-size: 18pt; margin-bottom: 10pt; text-wrap: balance; }
+  h3.subhead { font-size: 11.5pt; margin: 11pt 0 4pt; color: var(--ink); }
+
+  .lede { color: var(--ink-2); max-width: 150mm; margin-bottom: 10pt; }
+
+  /* ---- Data tables ---- */
+  .data-table { margin-bottom: 3pt; break-inside: avoid; }
+  .data-table th {
+    text-align: left; font-size: 8.3pt; font-weight: 600; letter-spacing: 0.03em;
+    text-transform: uppercase; color: var(--ink-muted); border-bottom: 1px solid var(--hairline);
+    padding: 3.5pt 8pt;
+  }
+  .data-table td { padding: 3.5pt 8pt; border-bottom: 1px solid var(--hairline); font-size: 9.3pt; }
+  .data-table td.num, .data-table th.num { text-align: right; }
+  .data-table tr:last-child td { border-bottom: 1px solid var(--ink-2); }
+  .data-table .total td { font-weight: 600; border-top: 1px solid var(--ink-2); }
+  .table-caption { font-size: 8.7pt; color: var(--ink-muted); margin: -2pt 0 12pt; }
+
+  /* Rules read as a lookup, not prose: ragged-right, and the condition
+     column carries the weight so the eye can scan down it. */
+  .rules-table td { text-align: left; hyphens: none; }
+  .rules-table td:first-child { font-weight: 600; width: 42%; }
+
+  .two-col { display: flex; gap: 16pt; }
+  .two-col > div { flex: 1; }
+
+  .goal-list { list-style: none; margin: 0 0 6pt; padding: 0; break-inside: avoid; }
+  .goal-list li { padding: 2pt 0 2pt 14pt; position: relative; font-size: 9.5pt; line-height: 1.4; }
+  .goal-list li::before { content: "—"; position: absolute; left: 0; color: var(--ink-muted); }
+
+  /* ---- Scenario cards (section 2) ---- */
+  .scenario-card {
+    border: 1px solid var(--hairline); border-radius: 6pt; padding: 10pt 14pt;
+    margin-bottom: 9pt; break-inside: avoid;
+  }
+  .scenario-card h3 { font-size: 11.5pt; margin-bottom: 3pt; }
+  .scenario-card p { font-size: 9.6pt; color: var(--ink-2); margin: 0; }
+  .scenario-tag {
+    display: inline-block; font-size: 8pt; font-weight: 600; letter-spacing: 0.02em;
+    padding: 1.5pt 7pt; border-radius: 100pt; margin-left: 6pt; vertical-align: middle;
+  }
+  .scenario-tag--recommended { background: #e2ebe6; color: #0a6b3f; }
+  .scenario-tag--conservative { background: var(--accent-soft); color: var(--accent); }
+  .scenario-tag--stretch { background: #f7e6df; color: #a1401d; }
+
+  /* ---- Legend ---- */
+  .legend {
+    display: flex; gap: 16pt; align-items: center; padding: 8pt 12pt;
+    background: var(--accent-soft); border-radius: 6pt; font-size: 8.7pt;
+    color: var(--ink-2); margin-bottom: 10pt;
+  }
+  .legend b { color: var(--ink); }
+  .legend-chip { display: inline-flex; align-items: center; gap: 5pt; }
+  .legend-dot { width: 8pt; height: 8pt; border-radius: 50%; display: inline-block; }
+  .legend-dot--red { background: var(--critical); }
+  .legend-dot--yellow { background: var(--warning); }
+  .legend-dot--green { background: var(--good); }
+
+  /* ---- Results table (section 3) ---- */
+  .results-table { border: 1px solid var(--hairline); border-radius: 8pt; overflow: hidden; margin-bottom: 14pt; break-inside: avoid; }
+  .results-row {
+    display: flex; align-items: center; gap: 10pt; padding: 10pt 14pt;
+    border-bottom: 1px solid var(--hairline); break-inside: avoid;
+  }
+  .results-row:last-child { border-bottom: none; }
+  .results-row.head { background: var(--accent-soft); font-size: 8pt; font-weight: 600;
+    letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+  .rr-name { flex: 1.5; }
+  .rr-name h3 { font-size: 10.8pt; margin-bottom: 2pt; }
+  .rr-dial { flex: 0 0 78pt; text-align: center; }
+  .rr-stat { flex: 1; }
+  .rr-stat .stat-label { display: block; font-size: 7.8pt; color: var(--ink-muted); margin-bottom: 1pt; }
+  .rr-stat .stat-value { font-size: 10pt; font-weight: 600; }
+  .rr-footnote { font-size: 8pt; color: var(--ink-muted); font-style: italic; margin-top: 3pt; }
+
+  /* Note: fill/stroke for both SVGs below is set via inline presentation
+     attributes in report/charts.py, not CSS — WeasyPrint doesn't reliably
+     apply page CSS to SVG shapes. These rules only control final display
+     size (the SVG's own width/height attributes set the correct aspect
+     ratio; CSS width + height:auto scales it to fit the layout). */
+  .dial { width: 78pt; height: auto; }
+  .fanchart-wrap { border: 1px solid var(--hairline); border-radius: 8pt; padding: 12pt 14pt 6pt; break-inside: avoid; }
+  .fanchart-wrap h3 { font-size: 11pt; margin-bottom: 2pt; }
+  .fanchart-caption { font-size: 8.5pt; color: var(--ink-muted); margin-bottom: 6pt; }
+  .fanchart { width: 100%; height: auto; }
+
+  /* Per-asset-type fan charts, stacked vertically -- each subplot keeps its
+     own y-scale (a Pension in the millions and a flat £750k Property share
+     one x-axis, never one y-axis; see the dataviz skill's "one axis" rule,
+     which is about a single chart, not a group of them side by side). */
+  .fanchart-stack { display: flex; flex-direction: column; gap: 8pt; margin-bottom: 14pt; }
+  .fanchart-stack .fanchart-wrap { padding: 8pt 12pt 4pt; }
+  .fanchart-stack .fanchart-wrap h3 { font-size: 9.5pt; }
+  .fanchart-stack .fanchart-caption { font-size: 8pt; margin-bottom: 3pt; }
+
+  /* ---- Recommendations ---- */
+  .rec-block { margin-bottom: 12pt; break-inside: avoid; }
+  .rec-block h3 { font-size: 12pt; margin-bottom: 4pt; }
+  .rec-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16pt; height: 16pt; border-radius: 50%; background: var(--accent); color: white;
+    font-size: 8.5pt; font-weight: 700; margin-right: 6pt;
+  }
+
+  /* ---- Timeline ---- */
+  .timeline { margin: 0; padding: 0; list-style: none; }
+  .timeline li {
+    display: flex; gap: 12pt; padding: 7pt 0; border-bottom: 1px solid var(--hairline);
+  }
+  .timeline li:last-child { border-bottom: none; }
+  .tl-date { flex: 0 0 62pt; font-weight: 600; font-size: 9.3pt; color: var(--accent); }
+  .tl-desc { flex: 1; font-size: 9.6pt; }
+
+  /* ---- Notes ---- */
+  .notes-list { margin: 0; padding: 0; list-style: none; }
+  .notes-list li { font-size: 9pt; color: var(--ink-2); padding: 4pt 0 4pt 14pt; position: relative; }
+  .notes-list li::before { content: "•"; position: absolute; left: 0; color: var(--ink-muted); }
+  .disclaimer {
+    margin-top: 14pt; padding: 10pt 12pt; border: 1px solid var(--hairline); border-radius: 6pt;
+    background: var(--accent-soft); font-size: 8.7pt; color: var(--ink-2);
+  }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-top">
+    <div class="cover-eyebrow">Retirement Plan</div>
+    <h1 class="cover-title">{{ client_name }}</h1>
+    <p class="cover-sub">{{ cover_subtitle }}</p>
+  </div>
+  <div class="cover-bottom">
+    Prepared {{ prepared_date }} &middot; Modelling as of {{ as_of_date }} &middot; A planning tool, not regulated financial advice — see Notes, Section 8.
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 1</div>
+  <h2 class="section-title">Current position and inputs</h2>
+  <p class="lede">{{ section1.intro }}</p>
+
+  <div class="two-col">
+    <div>
+      <h3 class="subhead">Household</h3>
+      <table class="data-table">
+        <tr><th>Person</th><th class="num">Age</th><th>Income</th></tr>
+        {% for person in section1.people %}
+        <tr><td>{{ person.name }}</td><td class="num">{{ person.age }}</td><td>{{ person.income }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <div>
+      <h3 class="subhead">Debts</h3>
+      <table class="data-table">
+        <tr><th>Debt</th><th class="num">Remaining</th><th class="num">Clears</th></tr>
+        {% for debt in section1.debts %}
+        <tr><td>{{ debt.name }}</td><td class="num">{{ debt.balance }}</td><td class="num">{{ debt.clears }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <h3 class="subhead">Assets</h3>
+  <table class="data-table">
+    <tr><th>Asset</th><th>Owner</th><th class="num">Value</th><th>Notes</th></tr>
+    {% for asset in section1.assets %}
+    <tr><td>{{ asset.name }}</td><td>{{ asset.owner }}</td><td class="num">{{ asset.value }}</td><td>{{ asset.notes }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="2">Total net worth</td><td class="num">{{ section1.total_net_worth }}</td><td></td></tr>
+  </table>
+  <p class="table-caption">{{ section1.assets_caption }}</p>
+
+  <h3 class="subhead">Goals</h3>
+  <ul class="goal-list">
+    {% for goal in section1.goals %}<li>{{ goal }}</li>{% endfor %}
+  </ul>
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 2</div>
+  <h2 class="section-title">Scenarios tested</h2>
+  <p class="lede">{{ section2.intro }}</p>
+  {% if section2.draw_order_statement %}
+  <div class="legend" style="display: block;">{{ section2.draw_order_statement }}</div>
+  {% endif %}
+
+  {% for s in section2.scenarios %}
+  <div class="scenario-card">
+    <h3>{{ s.name }}<span class="scenario-tag scenario-tag--{{ s.tag_class }}">{{ s.tag }}</span></h3>
+    <p>{{ s.description }}</p>
+  </div>
+  {% endfor %}
+
+  <h3 class="subhead">How spending is modelled</h3>
+  <p>{{ section2.spending_explainer.intro }}</p>
+  <table class="data-table">
+    <tr><th>Component</th><th class="num">Amount</th></tr>
+    {% for row in section2.spending_explainer.rows %}
+    <tr><td>{{ row.label }}</td><td class="num">{{ row.value }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="table-caption">{{ section2.spending_explainer.guardrail_note }}</p>
+
+  {% if section2.spending_rules %}
+  <h3 class="subhead">{{ section2.spending_rules.title }}</h3>
+  <p class="table-caption" style="margin-bottom: 8pt;">{{ section2.spending_rules.intro }}</p>
+  <table class="data-table rules-table">
+    <tr><th>If this happens</th><th>Then this happens</th></tr>
+    {% for rule in section2.spending_rules.rows %}
+    <tr><td>{{ rule.condition }}</td><td>{{ rule.action }}</td></tr>
+    {% endfor %}
+  </table>
+  {% if section2.spending_rules.footnote %}
+  <p class="table-caption">{{ section2.spending_rules.footnote }}</p>
+  {% endif %}
+  {% endif %}
+
+  <h3 class="subhead">{{ section2.also_tested_title or "Also tested" }}</h3>
+  <ul class="goal-list">
+    {% for item in section2.also_tested %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 3</div>
+  <h2 class="section-title">Results</h2>
+  <p class="lede">{{ section3.intro }}</p>
+
+  <div class="legend">
+    <span><b>Reading the dial</b></span>
+    <span class="legend-chip"><span class="legend-dot legend-dot--red"></span>below 90% — needs a change</span>
+    <span class="legend-chip"><span class="legend-dot legend-dot--yellow"></span>90–95% — borderline</span>
+    <span class="legend-chip"><span class="legend-dot legend-dot--green"></span>95%+ — durable</span>
+  </div>
+
+  <div class="results-table">
+    <div class="results-row head">
+      <div class="rr-name">Scenario</div>
+      <div class="rr-dial">Success</div>
+      <div class="rr-stat">Median spend/yr</div>
+      <div class="rr-stat">Worst case (5%) min spend</div>
+      <div class="rr-stat">Net to heirs (p10–p90)</div>
+    </div>
+    {% for row in section3.rows %}
+    <div class="results-row">
+      <div class="rr-name"><h3>{{ row.name }}</h3></div>
+      <div class="rr-dial">{{ row.dial_svg | safe }}</div>
+      <div class="rr-stat"><span class="stat-label">Median</span><span class="stat-value">{{ row.median_spend }}</span></div>
+      <div class="rr-stat"><span class="stat-label">Worst case (5%)</span><span class="stat-value">{{ row.worst_case_spend }}</span></div>
+      <div class="rr-stat"><span class="stat-label">p10 – p90, after tax</span><span class="stat-value">{{ row.net_bequest_range }}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if section3.outro %}<p class="table-caption">{{ section3.outro }}</p>{% endif %}
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 4</div>
+  <h2 class="section-title">{{ section4.title }}</h2>
+  <p class="lede">{{ section4.intro }}</p>
+
+  {% if section4.bridge_rows %}
+  <h3 class="subhead">The bridge, specifically: assets outside a pension remaining the year before it becomes accessible</h3>
+  <p class="table-caption" style="margin-bottom: 8pt;">{{ section4.bridge_intro }}</p>
+  <table class="data-table">
+    <tr><th>Scenario</th><th class="num">10th percentile</th><th class="num">Median</th><th class="num">90th percentile</th></tr>
+    {% for row in section4.bridge_rows %}
+    <tr><td>{{ row.name }}</td><td class="num">{{ row.p10 }}</td><td class="num">{{ row.p50 }}</td><td class="num">{{ row.p90 }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <div class="fanchart-wrap">
+    <h3>{{ section4.fanchart_title }}</h3>
+    <p class="fanchart-caption">{{ section4.fanchart_caption }}</p>
+    {{ section4.fanchart_svg | safe }}
+  </div>
+
+  {% if section4.asset_fan_charts %}
+  <h3 class="subhead">{{ section4.asset_fan_charts_title }}</h3>
+  <p class="table-caption" style="margin-bottom: 8pt;">{{ section4.asset_fan_charts_caption }}</p>
+  <div class="fanchart-stack">
+    {% for chart in section4.asset_fan_charts %}
+    <div class="fanchart-wrap">
+      <h3>{{ chart.title }}</h3>
+      {{ chart.svg | safe }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for block in section4.asset_mix %}
+  <h3 class="subhead">{{ block.title }}</h3>
+  <p class="table-caption" style="margin-bottom: 8pt;">{{ block.caption }}</p>
+  <table class="data-table">
+    <tr>
+      <th>Asset type</th><th class="num">5th</th><th class="num">10th</th>
+      <th class="num">Median</th><th class="num">90th</th><th class="num">95th</th>
+    </tr>
+    {% for row in block.rows %}
+    <tr{{ ' class="total"' | safe if row.is_total else '' }}>
+      <td>{{ row.label }}</td><td class="num">{{ row.p5 }}</td><td class="num">{{ row.p10 }}</td>
+      <td class="num">{{ row.p50 }}</td><td class="num">{{ row.p90 }}</td><td class="num">{{ row.p95 }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 5</div>
+  <h2 class="section-title">Recommendations</h2>
+
+  {% for rec in section5.recommendations %}
+  <div class="rec-block">
+    <h3><span class="rec-number">{{ loop.index }}</span>{{ rec.title }}</h3>
+    <p>{{ rec.body }}</p>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 6</div>
+  <h2 class="section-title">{{ section6.title }}</h2>
+  <p class="lede">{{ section6.intro }}</p>
+
+  {% for item in section6.structures %}
+  <div class="rec-block">
+    <h3><span class="rec-number">{{ loop.index }}</span>{{ item.title }}<span class="scenario-tag scenario-tag--{{ item.tag_class }}">{{ item.tag }}</span></h3>
+    <p>{{ item.body }}</p>
+  </div>
+  {% endfor %}
+
+  {% if section6.caveat %}
+  <div class="disclaimer">{{ section6.caveat }}</div>
+  {% endif %}
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 7</div>
+  <h2 class="section-title">Steps and timeline</h2>
+  <p class="lede">{{ section7.intro }}</p>
+  <ul class="timeline">
+    {% for item in section7.entries %}
+    <li><span class="tl-date">{{ item.date }}</span><span class="tl-desc">{{ item.description }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="section">
+  <div class="section-eyebrow">Section 8</div>
+  <h2 class="section-title">Notes</h2>
+  <h3 class="subhead">Assumptions and data sources</h3>
+  <ul class="notes-list">
+    {% for note in section8.notes %}<li>{{ note }}</li>{% endfor %}
+  </ul>
+  <div class="disclaimer">{{ section8.disclaimer }}</div>
+</section>
+
+</body>
+</html>

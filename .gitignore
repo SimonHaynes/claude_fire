@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+
+# Simulation caches (regenerable, and large)
+.cache/
+**/.cache/
+
+# Real household data (names, salaries, balances) — never commit. sample_client/
+# is a fabricated fixture and is the only workspace/* subdirectory tracked.
+workspace/*/
+!workspace/sample_client/
+
+# Generated report artefacts (rebuild with `python -m workspace.<name>.build_report`)
+workspace/**/report*.pdf
+workspace/**/report*.html
+workspace/**/*_summary.json
+
+# Local credentials — never commit
+.env
+
+# Personal Claude Code permission grants — local to each machine
+.claude/settings.local.json
+
+# Third-party market/mortality data — redistribution terms are unclear, so
+# this repo ships none of it. Run tools/fetch_market_data.py and
+# tools/build_mortality_csv.py to regenerate (see DATA_SETUP.md).
+src/retireplan/data/*.csv
+src/retireplan/data/mortality/*.csv

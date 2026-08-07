@@ -1,0 +1,50 @@
+Family Details:
+Pat (me), Birthday 12/04/1969
+Robin (Partner), Birthday 25/08/1971
+Robbie (Son), Birthday 03/06/2010
+
+Pat:
+Birthday 12/4/1969
+Salary (Yearly, before Tax and SS) £78K
+Pension Contributions (Monthly, SS): Employee £650, Employer £260
+
+Robin:
+Salary (Yearly, before Tax and SS) £46K
+Pension Contributions (Monthly, SS): Employee £350, Employer £180
+
+Current Outgoings (Monthly)
+Mortgage: £145,000 remaining, paying £950 Monthly, 12 years 6 months remaining.
+Council Tax, Utilities etc.: ~£450
+Everything Else (food, holidays, cars): ~£2,200
+
+Spending in retirement (monthly):
+Council Tax, Utilities etc: ~£450
+Essential Spending: ~£1,600
+Discretionary Spending: £700
+
+Discretionary Yearly Spending:
+Estimated house repairs, car replacement etc. (Per year): £6,000
+
+Assets:
+House ~£480K (jointly owned)
+Pat:
+Pension: £310,000 (Defined Contribution) Invested in a Global Tracker
+Full NI contributions for State Pension
+ISA Invested in a Global Tracker: £52,000
+
+Robin:
+DC Pension: £95,000 (Global Tracker)
+DB Pension (small workplace scheme): £3,800 yearly (in today's money) from age 65 + £6,500 lump sum.
+Full NI contributions for State Pension
+ISA Invested in a Global Tracker: £21,000
+
+GOALS:
+* Retire as early as comfortably possible
+* Keep a comfortable cushion for the unexpected
+* Leave whatever's left to each other, and then to Robbie after both die
+
+NOTES:
+* Moderate risk tolerance
+* Resident in England
+* This household is fabricated for testing and documentation purposes only —
+  it is not a real client. Any resemblance to a real person is coincidental.
