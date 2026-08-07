@@ -29,12 +29,12 @@ reason you can state a probability honestly rather than confidently.
 
 1. **Understand the current position.** `intake-financial-data` builds and
    confirms the household — everything owned, owed, earned and spent, as it
-   actually is today. **Give every adult an ISA `Asset` (even at `value=0.0`
-   if they hold nothing in one today), and a GIA if plausible.** The engine
-   will not create an ISA on its own the way it does a GIA — a household
-   built without one can never be shown the benefit of opening one, silently,
-   for the whole plan. Not currently holding an ISA is a fact about the
-   client's history, not a ceiling on what the plan can consider.
+   actually is today. The engine synthesises a zero-balance ISA and GIA for
+   anyone without one, so every household can shelter money in either
+   whether or not intake recorded one explicitly — but still record the
+   client's *real* ISA/GIA whenever they hold one; the synthetic fallback is
+   a safety net for "holds none today," not a substitute for their actual
+   balance.
 2. **Understand the goals, and where flexibility lies.** Also
    `intake-financial-data`, but treat this as its own checkpoint, not a
    by-product of step 1: the stated goal (a date, "as early as possible", a

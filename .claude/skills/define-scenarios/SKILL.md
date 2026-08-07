@@ -107,17 +107,15 @@ scenario. Load `uk-pension-tax-strategy` before deciding; do not reach for
 `StandardOrder` by habit just because "spend the ISA first" is the familiar
 rule of thumb.
 
-**Before running anything that routes money toward an ISA, confirm the
-household actually has one.** `TaxEfficientOrder`, `PensionAccess.PCLS`, and
-ordinary surplus investment all assume an `ISA` `Asset` exists for whoever
-they're crediting — the engine will not create one, and silently does
-nothing instead of erroring if it's missing (see `uk-pension-tax-strategy`'s
-GIA section). If intake described a client with no current ISA, that should
-still have produced an `Asset(..., AssetType.ISA, value=0.0, ...)` — go back
-and add it rather than proceed without one. **Not currently holding an ISA
-or GIA is never a reason to model the household as unable to use one** —
-anyone can open either, so the household definition should always make both
-possible, whether or not a given scenario ends up using them.
+**`TaxEfficientOrder`, `PensionAccess.PCLS`, and ordinary surplus investment
+all work even for a person with no explicit `ISA` `Asset`** — `plan.py`
+synthesises a zero-balance one automatically, the same way it already did
+for a GIA, so there is nothing to check here before running anything. This
+used to be a real gap (nothing would route to an ISA at all without one, and
+nothing would error to say so); it no longer is. Still record the client's
+*real* ISA in intake whenever they have one — the synthetic fallback opens
+at zero and is a safety net for "holds none today," not a substitute for
+their actual balance.
 
 **Actively consider a variant that opens an ISA (or GIA) where the household
 doesn't already lean on one.** A household sitting on pension-only wealth
