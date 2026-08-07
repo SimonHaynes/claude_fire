@@ -129,3 +129,61 @@ class GlidePath(AllocationStrategy):
         t = min(1.0, year_index / self.years) if self.years > 0 else 1.0
         pct = self.start_pct + (self.end_pct - self.start_pct) * t
         return _blend(market, self.growth_key, self.safe_key, pct)
+
+
+@dataclass
+class BondTent(AllocationStrategy):
+    """De-risk toward retirement, then re-risk afterward -- a V-shape, not a
+    one-way decline.
+
+    The Kitces/Pfau finding behind this: sequence-of-returns risk peaks *at*
+    retirement, not years before it and not long after -- the portfolio is at
+    its largest right when withdrawals begin, so a bad early sequence does
+    the most damage exactly there. The classic "reduce equities as you age"
+    glide path (`GlidePath`) keeps de-risking through retirement, which is
+    the wrong side of the peak: once past the first several years, more
+    growth improves outcomes rather than threatening them, because there is
+    less remaining horizon for a crash to compound against and more horizon
+    for a recovery to pay off.
+
+    Three points, linear between them, in years from the as-of date (the
+    same convention `GlidePath` uses) -- pick `years_to_low` to land on your
+    own retirement date:
+
+        start_pct (year 0) -> low_pct (years_to_low) -> end_pct (years_to_low + years_to_recover)
+
+    `years_to_low` is therefore doing double duty as "years until
+    retirement" -- there is no separate retirement-date parameter, by
+    design, so this composes the same way every other allocation strategy
+    does rather than needing the scenario's retirement date threaded through
+    a new channel.
+    """
+
+    start_pct: float
+    low_pct: float
+    end_pct: float
+    years_to_low: int
+    years_to_recover: int
+    growth_key: str = "global_equity"
+    safe_key: str = "gov_bonds"
+    applies_to: frozenset[AssetType] | None = None
+
+    def series_keys(self) -> frozenset[str]:
+        return frozenset({self.growth_key, self.safe_key})
+
+    def _applies(self, asset: Asset) -> bool:
+        if self.applies_to is not None:
+            return asset.type in self.applies_to
+        return isinstance(asset.returns, SampledSeries) and asset.returns.key == self.growth_key
+
+    def real_return(self, asset, market, year_index):
+        if not self._applies(asset):
+            return None
+        if year_index <= self.years_to_low:
+            t = year_index / self.years_to_low if self.years_to_low > 0 else 1.0
+            pct = self.start_pct + (self.low_pct - self.start_pct) * t
+        else:
+            elapsed = year_index - self.years_to_low
+            t = min(1.0, elapsed / self.years_to_recover) if self.years_to_recover > 0 else 1.0
+            pct = self.low_pct + (self.end_pct - self.low_pct) * t
+        return _blend(market, self.growth_key, self.safe_key, pct)

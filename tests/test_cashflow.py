@@ -144,6 +144,32 @@ class TestIncomeAndContributions:
         plan = compile_plan(contributing_household, scenario, UK, AS_OF)
         assert plan.years[0].salary_gross_by_person["Sam"] == pytest.approx(30_000, rel=0.01)
 
+    def test_contribution_end_stops_contributing_while_the_salary_continues(self, flat_market):
+        """Coast FIRE, modelled precisely: contribute until a date, then
+        stop, while still working (and still sacrificing nothing further)
+        until retirement proper."""
+        household = Household(
+            people=[Person("Sam", date(1976, 1, 1))],
+            incomes=[IncomeSource("Sam", IncomeType.SALARY, 60_000, Frequency.YEARLY)],
+            expenses=[Expense("Living", 20_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[
+                Asset("Pension", AssetType.DC_PENSION, "Sam", 100_000, returns=FixedReal(0.0),
+                      contributions=Contribution(employee_monthly=1_000, employer_monthly=500,
+                                                 end=date(2028, 1, 1))),
+            ],
+            assumptions=Assumptions(life_expectancy_age=56, state_pension_age=68),
+        )
+        scenario = Scenario("no retirement", withdrawal=SpendNominal())
+        plan = compile_plan(household, scenario, UK, AS_OF)
+        projection = run(household, scenario, flat_market)
+        # Two full years of (1,000 + 500) x 12, then nothing.
+        assert projection.years[1].balances["Pension"] == pytest.approx(100_000 + 2 * 18_000)
+        assert projection.years[2].balances["Pension"] == pytest.approx(projection.years[1].balances["Pension"])
+        # The salary itself -- and its sacrifice-free taxable pay -- is
+        # unaffected: Sam is still working, just no longer contributing.
+        assert plan.years[3].salary_gross_by_person["Sam"] == pytest.approx(60_000)
+        assert plan.years[3].employment_income_by_person["Sam"] == pytest.approx(60_000)
+
 
 class TestSpending:
     def test_phase_gates_expenses(self, flat_market):

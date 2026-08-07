@@ -74,7 +74,10 @@ which alternatives are worth the compute, not habit or a fixed template of
   whichever scenario is now the headline, so any difference is attributable:
   - `GuytonKlinger()` vs `SpendNominal()` vs `PostAccessStepUp()`
   - `CashBondLadder()` vs `StandardOrder()` vs `TaxEfficientOrder()`
-  - `StaticMix` / `ByAssetTypeMix` / `GlidePath` for allocation
+  - `StaticMix` / `ByAssetTypeMix` / `GlidePath` / `BondTent` for allocation —
+    `BondTent` is the Kitces/Pfau finding that sequence risk peaks *at*
+    retirement, not before or long after: de-risk into it, then re-risk
+    afterward, rather than `GlidePath`'s one-way decline through it.
   - `market_stress=({"global_equity": -0.35}, ...)` for a deliberate
     sequence-of-returns test
   - Costed versions of any uncosted goal, via `OneOffSpend`
@@ -84,6 +87,16 @@ which alternatives are worth the compute, not habit or a fixed template of
     default, and a report that never mentions it implies a completeness the
     plan does not have. Keep it out of the base case — it answers a
     different question from "when can we stop working".
+  - `income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=...)` for a
+    Bodie/Pfau floor-and-upside (safety-first) comparison: bought once from
+    each accessible DC pension, converting part of it into guaranteed,
+    fully-taxable income for life, so essential spending is secured before
+    the rest is invested for upside. Not the same instrument as
+    `ImmediateNeedsAnnuity` — that one is impaired-life, care-only, and paid
+    tax-free direct to the provider; this one is an ordinary lifetime
+    annuity bought at retirement, taxed like any other pension income. Worth
+    testing whenever a household is anxious about running out rather than
+    about the estate.
   - `death_ages={"Name": 75}` to show the survivor's position directly. The
     aggregate already includes first death, but a client asked to picture
     twenty years alone on one State Pension needs the specific number.
@@ -178,6 +191,11 @@ household, don't assume the branding.
   chosen for reports because the name sounded prudent, which is the reason it
   is gone rather than merely deprecated. If a household genuinely wants flat
   spending with the shortfall risk stated openly, that is `SpendNominal`.
+  Its capital-preservation cut suspends itself automatically in the final 15
+  years of the household's projected retirement (`final_years`, the
+  canonical Guyton-Klinger spec) — nothing to configure for this, just don't
+  be surprised to see a plan stop cutting late in life even under a poor
+  sequence.
 - **`ByAssetTypeMix` only overrides the types you name.** Leave
   `default_growth_pct` at `None` unless you genuinely intend to re-price
   every other asset — including property and fixed-rate holdings.

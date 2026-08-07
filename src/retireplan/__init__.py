@@ -23,7 +23,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (
@@ -59,10 +59,11 @@ from .model import (
 )
 from .plan import Plan, PlanYear, compile_plan
 from .care import CareModel, CareNeed, CarePlan, ImmediateNeedsAnnuity, MeansTest
-from .scenario import Gift, OneOffSpend, PensionLumpSum, Scenario
+from .scenario import Gift, IncomeAnnuity, OneOffSpend, PensionLumpSum, Scenario
 from .serde import dump_household, household_from_dict, household_to_dict, load_household
 from .simulation import SimulationResult, project_once, run_monte_carlo
 from .strategies import (
+    BondTent,
     ByAssetTypeMix,
     CashBondLadder,
     GlidePath,
@@ -96,11 +97,11 @@ __all__ = [
     "FixedAge", "LifeTable", "MortalityModel",
     # engine
     "Plan", "PlanYear", "compile_plan", "Projection", "YearResult", "project",
-    "Scenario", "OneOffSpend", "Gift", "PensionLumpSum",
+    "Scenario", "OneOffSpend", "Gift", "PensionLumpSum", "IncomeAnnuity",
     # care
     "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest", "SimulationResult", "run_monte_carlo", "project_once",
     # strategies
-    "ByAssetTypeMix", "CashBondLadder", "GlidePath",
+    "BondTent", "ByAssetTypeMix", "CashBondLadder", "GlidePath",
     "GuytonKlinger", "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal", "StandardOrder", "StaticMix", "TaxEfficientOrder", "ThreeBucketStrategy",
     # tax
     "UK", "UKTaxSystem", "UK_IHT", "IHTRules", "BequestBreakdown",

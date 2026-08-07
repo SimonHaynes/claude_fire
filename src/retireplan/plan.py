@@ -31,7 +31,7 @@ from .model import (
 from .mortality import FixedAge
 from .scenario import Scenario
 from .tax import TaxSystem
-from .timeline import add_years, age_on, debt_payment_schedule, earliest, months_remaining, overlap_fraction
+from .timeline import add_years, age_on, debt_payment_schedule, earliest, latest, months_remaining, overlap_fraction
 
 CASH_RESERVE = "__cash_reserve"
 LADDER_RESERVE = "__ladder_reserve"
@@ -562,8 +562,18 @@ def compile_plan(
             for asset in spendable:
                 if asset.contributions is None or asset.owner != income.owner:
                     continue
-                employee = asset.contributions.employee_monthly * 12 * fraction
-                employer = asset.contributions.employer_monthly * 12 * fraction
+                # A Contribution's own start/end narrow the salary's window
+                # rather than replace it -- Coast FIRE stops contributing
+                # while the salary (and its tax and NI) carries on, not the
+                # other way round, and a contribution cannot outlive the
+                # salary that funds it.
+                contrib_lower = latest(income.start, asset.contributions.start)
+                contrib_upper = earliest(income.end, stop, asset.contributions.end)
+                contrib_fraction = overlap_fraction(start, end, contrib_lower, contrib_upper)
+                if contrib_fraction <= 0:
+                    continue
+                employee = asset.contributions.employee_monthly * 12 * contrib_fraction
+                employer = asset.contributions.employer_monthly * 12 * contrib_fraction
                 slot = slot_of[asset.name]
                 contributions[slot] = contributions.get(slot, 0.0) + employee + employer
                 sacrificed += employee

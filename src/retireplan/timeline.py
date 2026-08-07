@@ -59,6 +59,12 @@ def earliest(*dates: date | None) -> date | None:
     return min(present) if present else None
 
 
+def latest(*dates: date | None) -> date | None:
+    """The latest of several bounds, treating None as 'no bound'."""
+    present = [d for d in dates if d is not None]
+    return max(present) if present else None
+
+
 def overlap_fraction(
     window_start: date,
     window_end: date,

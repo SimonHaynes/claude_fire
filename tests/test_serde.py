@@ -58,7 +58,7 @@ class TestHouseholdRoundTrip:
                       maturity=Maturity(on=date(2026, 11, 5), rollover_to="ISA")),
                 Asset("Pension", AssetType.DC_PENSION, "Susie", 115_000,
                       returns=SampledSeries("global_equity"),
-                      contributions=Contribution(500, 300)),
+                      contributions=Contribution(500, 300, end=date(2035, 6, 1))),
                 Asset("Teachers", AssetType.DB_PENSION, "Susie",
                       defined_benefit=DefinedBenefit(9_623, 60, 15_245)),
             ],

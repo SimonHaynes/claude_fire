@@ -155,6 +155,8 @@ def household_to_dict(household: Household) -> dict[str, Any]:
                     {
                         "employee_monthly": a.contributions.employee_monthly,
                         "employer_monthly": a.contributions.employer_monthly,
+                        "start": _d(a.contributions.start),
+                        "end": _d(a.contributions.end),
                     }
                     if a.contributions
                     else None
@@ -309,7 +311,14 @@ def household_from_dict(raw: dict[str, Any]) -> Household:
                 annual_charge_pct=a.get("annual_charge_pct", 0.0),
                 flat_annual_fee=a.get("flat_annual_fee", 0.0),
                 contributions=(
-                    Contribution(**a["contributions"]) if a.get("contributions") else None
+                    Contribution(
+                        employee_monthly=a["contributions"]["employee_monthly"],
+                        employer_monthly=a["contributions"]["employer_monthly"],
+                        start=_pd(a["contributions"].get("start")),
+                        end=_pd(a["contributions"].get("end")),
+                    )
+                    if a.get("contributions")
+                    else None
                 ),
                 maturity=(
                     Maturity(on=_pd(a["maturity"]["on"]), rollover_to=a["maturity"]["rollover_to"])  # type: ignore[arg-type]

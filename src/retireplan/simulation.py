@@ -257,6 +257,7 @@ def cache_key(
             # returns another scenario's cached result.
             "death_ages": dict(sorted((scenario.death_ages or {}).items())),
             "care": scenario.care.spec() if scenario.care else None,
+            "income_annuity": scenario.income_annuity.spec() if scenario.income_annuity else None,
             "withdrawal": _strategy_spec(scenario.withdrawal),
             "drawdown": _strategy_spec(scenario.drawdown),
             "allocation": _strategy_spec(scenario.allocation),

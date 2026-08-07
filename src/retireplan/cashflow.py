@@ -75,6 +75,15 @@ class YearResult:
     """Gross amount taken this year via `Scenario.pension_lump_sums` -- a
     one-off, dated, partial-crystallisation-style withdrawal, independent
     of the scenario's ongoing `pension_access` mode."""
+    income_annuity_premium: float = 0.0
+    """Gross amount drawn from a DC pension this year to buy a
+    `Scenario.income_annuity` -- a one-off event, at most once per person,
+    at first pension access."""
+    income_annuity_income: float = 0.0
+    """This year's guaranteed income from a previously-bought
+    `Scenario.income_annuity`, already folded into taxable income and hence
+    into `tax_paid` -- reported separately because it is guaranteed rather
+    than drawn, unlike the rest of `gross_income`."""
 
 
     @property
@@ -369,6 +378,11 @@ def project(
     # before access begins would otherwise be mistaken for "PCLS already
     # happened" and silently suppress it.
     pcls_fired: set[str] = set()
+    # A `Scenario.income_annuity`, once bought for a person, keeps paying for
+    # the rest of that person's life -- tracked here rather than recomputed,
+    # since the benefit is fixed (subject only to its own escalation) at the
+    # point of purchase, independent of how the market performs afterwards.
+    income_annuity_state: dict[str, dict] = {}
     results: list[YearResult] = []
 
     for base_year in plan.years:
@@ -490,6 +504,40 @@ def project(
                 tax_free_cash_taken[person] = tax_free_cash_taken.get(person, 0.0) + lump
                 pcls_this_year += lump
 
+        # --- floor-and-upside annuity: bought once, at first access -----
+        income_annuity = scenario.income_annuity
+        annuity_premium_this_year = 0.0
+        if income_annuity is not None and income_annuity.enabled:
+            for person, dc in slots.dc_slots_by_person.items():
+                if not dc or person in income_annuity_state:
+                    continue
+                if not _dc_accessible(year, slots, person):
+                    continue
+                pot = portfolio.sum_of(dc)
+                premium = pot * income_annuity.fraction_of_pot
+                if premium <= 0:
+                    continue
+                portfolio.draw_pro_rata(dc, premium)
+                benefit = income_annuity.annual_benefit(premium)
+                income_annuity_state[person] = {"benefit": benefit, "start_index": year.index}
+                annuity_premium_this_year += premium
+
+        # --- floor-and-upside annuity: this year's guaranteed income -----
+        annuity_income_this_year = 0.0
+        for person, state in income_annuity_state.items():
+            if person not in alive:
+                continue
+            elapsed = year.index - state["start_index"]
+            benefit = state["benefit"] * (1 + income_annuity.escalation) ** elapsed
+            annuity_income_this_year += benefit
+            year = dataclasses.replace(
+                year,
+                taxable_other_by_person={
+                    **year.taxable_other_by_person,
+                    person: year.taxable_other_by_person.get(person, 0.0) + benefit,
+                },
+            )
+
         # --- income and tax before any drawdown ------------------------
         taxable = year.taxable_income_by_person
         tax_paid = sum(tax.income_tax(v) for v in taxable.values()) + dividend_tax_paid
@@ -564,6 +612,7 @@ def project(
                     oldest_age=max(
                         (a for n, a in year.ages.items() if n in alive), default=0
                     ),
+                    years_remaining=second_death - i,
                     shortfall_for=shortfall_for,
                 )
             )
@@ -617,6 +666,8 @@ def project(
                 pcls_taken=pcls_this_year,
                 ufpls_tax_free_taken=draw.ufpls_tax_free if draw else 0.0,
                 pension_lump_sum_taken=lump_sum_this_year,
+                income_annuity_premium=annuity_premium_this_year,
+                income_annuity_income=annuity_income_this_year,
                 net_cashflow=net_cashflow,
                 unmet_shortfall=draw.unmet if draw else 0.0,
                 balances=dict(zip(plan.slot_names, portfolio.balances)),

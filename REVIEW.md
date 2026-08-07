@@ -327,6 +327,58 @@ differently. Until it is, treat any bucket/cash-buffer recommendation as
 needing the same stress test before it reaches a client, not an assumed
 good.
 
+### 1.16 FIRE and professional decumulation strategies — audited, three gaps closed — **medium**
+
+Researched the popular FIRE taxonomy (Lean/Fat/Coast/Barista FIRE) and the
+professional/industry-standard decumulation literature (the 4% rule,
+percentage-of-portfolio, Guyton-Klinger guardrails, ratcheting, bucket
+strategies, bond tents, floor-and-upside / safety-first, CAPE-based
+valuation-aware withdrawal) against what the engine could already express,
+distinguishing "already supported", "supported via composition", and
+"genuine gap". Bucket strategies were already covered by 1.15. Three
+gaps were shipped this pass:
+
+**Bond tent / rising equity glide path.** `AllocationStrategy.BondTent` — a
+V-shape, not `GlidePath`'s one-way decline: equity lowest *at* retirement,
+rising again afterward. The Kitces/Pfau finding behind it: sequence-of-returns
+risk peaks at retirement, when the portfolio is largest, not years before or
+long after it, so de-risking should trough there and reverse, not keep
+falling. Three points (`start_pct` → `low_pct` at `years_to_low` → `end_pct`
+after `years_to_recover`), same "years from as-of" convention as `GlidePath`.
+
+**General income-flooring annuity.** `Scenario.income_annuity: IncomeAnnuity`
+generalises the care-only `ImmediateNeedsAnnuity` into a Bodie/Pfau-style
+safety-first floor: bought once from each accessible DC pension (after any
+automatic PCLS, so it annuitises what's left of the pot), a fraction of it
+converts into guaranteed, fully-taxable income for the rest of that person's
+life — single-life, no survivor benefit, no residual value to the estate.
+Distinct from the care annuity in every way that matters: normal (not
+impaired) life expectancy, ordinary pension-income taxation rather than the
+care annuity's tax-free direct-to-provider routing, and triggered by pension
+access rather than by entering care.
+
+**Guyton-Klinger final-years rule.** The canonical specification — not an
+adaptation — suspends the capital-preservation cut in the final 15 years of
+the plan: cutting spending that late defends an estate the retiree will not
+live to need, and Guyton's own finding was that continuing to cut barely
+changes failure rates while needlessly depressing spending. Added
+`GuytonKlinger.final_years` (default 15) and `WithdrawalContext.years_remaining`
+(years to the household's last projected death, tracking whichever alive-set
+variant the year belongs to). The prosperity rule is not suspended.
+
+**Dated contribution changes.** `Contribution.start`/`Contribution.end` bound
+a contribution's own active window independently of the linked salary
+`IncomeSource`'s — `None` (the default) reproduces the old "active exactly
+when the salary is" behaviour exactly. Lets Coast FIRE be modelled precisely
+within one scenario: contribute until a date, then stop, while salary (and
+its tax and NI) continues unaffected until an independently-chosen
+retirement date — rather than only "already at the coast point today".
+
+**Deliberately not built:** CAPE-based valuation-aware dynamic withdrawal
+(Kitces, Early Retirement Now) — scoped out by the household this pass, still
+a genuine gap if a future engagement wants to test spending rules that key
+off starting valuation rather than portfolio performance alone.
+
 ---
 
 ## 2. Skills and agents
