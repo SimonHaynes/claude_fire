@@ -499,6 +499,7 @@ def project(
         )
 
         growth_return = market.get("global_equity", 0.0)
+        bond_return = market.get("gov_bonds", 0.0)
         # --- care, means-tested per person -----------------------------
         # Sampled per trial, so it cannot be precompiled the way the rest of
         # the schedule is. Assessed on each person's OWN capital, which is how
@@ -524,12 +525,14 @@ def project(
             gia_slots_by_person=slots.gia_slots_by_person,
             cash_slot=plan.cash_slot,
             ladder_slot=plan.ladder_slot,
+            bond_slot=plan.bond_slot,
             dc_accessible_by_person={
                 p: _dc_accessible(year, slots, p) for p in slots.dc_slots_by_person
             },
             is_retired=year.is_retired,
             essential_spend=year.essential,
             growth_return=growth_return,
+            bond_return=bond_return,
             isa_headroom_used=isa_headroom_used,
             pension_access=scenario.pension_access,
             tax_free_cash_used=tax_free_cash_taken,

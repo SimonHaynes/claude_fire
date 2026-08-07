@@ -26,6 +26,7 @@ from retireplan import (
     SpendNominal,
     StandardOrder,
     StaticMix,
+    ThreeBucketStrategy,
     compile_plan,
     project,
 )
@@ -223,6 +224,57 @@ class TestDrawdownStrategies:
         assert ladder.seeded is False
 
 
+class TestThreeBucketStrategy:
+    def _household(self):
+        return Household(
+            people=[Person("A", date(1960, 1, 1))],
+            expenses=[Expense("Living", 30_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[Asset("ISA", AssetType.ISA, "A", 1_000_000, returns=SampledSeries("global_equity"))],
+            assumptions=Assumptions(life_expectancy_age=68, state_pension_age=99),
+        )
+
+    def _run(self, market_rows, cash_years=2.0, bond_years=5.0):
+        household = self._household()
+        scenario = Scenario("retired", retirement_dates={"A": AS_OF}, withdrawal=SpendNominal(),
+                            drawdown=ThreeBucketStrategy(cash_years=cash_years, bond_years=bond_years))
+        plan = compile_plan(household, scenario, UK, AS_OF)
+        path = market_rows if len(market_rows) >= plan.n_years else market_rows + [market_rows[-1]] * (plan.n_years - len(market_rows))
+        return project(plan, path)
+
+    def test_seeds_both_buckets_from_the_isa_at_retirement(self):
+        flat = [{"global_equity": 0.0, "gov_bonds": 0.0, "inflation": 0.0}] * 3
+        first = self._run(flat).years[0]
+        assert first.balances["__cash_reserve"] == pytest.approx(2 * 30_000)
+        assert first.balances["__bond_reserve"] == pytest.approx(5 * 30_000)
+
+    def test_bond_bucket_refills_cash_every_year_regardless_of_equities(self):
+        """The defining difference from CashBondLadder: cash is topped up
+        from bonds unconditionally, not gated on the market being up."""
+        crash = [{"global_equity": 0.0, "gov_bonds": 0.0, "inflation": 0.0},
+                 {"global_equity": -0.30, "gov_bonds": 0.0, "inflation": 0.0},
+                 {"global_equity": -0.30, "gov_bonds": 0.0, "inflation": 0.0}]
+        years = self._run(crash).years
+        # Cash stays topped up to target even through two equity-crash years.
+        assert years[1].balances["__cash_reserve"] == pytest.approx(2 * 30_000, abs=1.0)
+        assert years[2].balances["__cash_reserve"] == pytest.approx(2 * 30_000, abs=1.0)
+        # ...funded by the bond bucket actually shrinking to pay for it.
+        assert years[2].balances["__bond_reserve"] < years[0].balances["__bond_reserve"]
+
+    def test_bond_bucket_only_refills_from_equity_when_equity_is_up(self):
+        down_then_up = [{"global_equity": 0.0, "gov_bonds": 0.0, "inflation": 0.0},
+                        {"global_equity": -0.20, "gov_bonds": 0.0, "inflation": 0.0},
+                        {"global_equity": 0.20, "gov_bonds": 0.0, "inflation": 0.0}]
+        years = self._run(down_then_up).years
+        target = 5 * 30_000
+        # After the down year, the bond bucket is not topped back up...
+        assert years[1].balances["__bond_reserve"] < target
+        # ...but it is, the moment equities recover.
+        assert years[2].balances["__bond_reserve"] == pytest.approx(target, abs=1.0)
+
+    def test_series_keys_declares_gov_bonds(self):
+        assert ThreeBucketStrategy().series_keys() == frozenset({"gov_bonds"})
+
+
 class TestComposition:
     def test_all_three_axes_can_be_combined(self):
         """The point of separating them: any combination must run."""
@@ -271,8 +323,8 @@ class TestShortfallTolerance:
         defaults = dict(
             tax=tax, isa_slots=(0,), isa_slots_by_person={"A": (0,)},
             dc_slots_by_person={}, gia_slots_by_person={},
-            cash_slot=1, ladder_slot=2, dc_accessible_by_person={},
-            is_retired=True, essential_spend=0.0, growth_return=0.0,
+            cash_slot=1, ladder_slot=2, bond_slot=3, dc_accessible_by_person={},
+            is_retired=True, essential_spend=0.0, growth_return=0.0, bond_return=0.0,
             isa_headroom_used={},
         )
         defaults.update(kw)

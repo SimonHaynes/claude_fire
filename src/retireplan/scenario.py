@@ -157,6 +157,7 @@ class Scenario:
 
     def series_keys(self) -> frozenset[str]:
         keys = self.allocation.series_keys() if self.allocation else frozenset()
+        keys = keys | self.drawdown.series_keys()
         return keys.union(*(frozenset(m) for m in self.market_stress)) if self.market_stress else keys
 
     def reset_strategies(self) -> None:

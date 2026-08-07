@@ -35,6 +35,12 @@ from .timeline import add_years, age_on, debt_payment_schedule, earliest, months
 
 CASH_RESERVE = "__cash_reserve"
 LADDER_RESERVE = "__ladder_reserve"
+BOND_RESERVE = "__bond_reserve"
+"""A second reserve slot, distinct from `LADDER_RESERVE`: that one grows at a
+strategy-chosen fixed real rate, this one is meant to earn a real sampled
+series (`gov_bonds`, typically) via `DrawdownContext.bond_return`, for a
+genuine three-bucket strategy where the middle tier is actual bonds rather
+than another cash-like reserve. See `ThreeBucketStrategy`."""
 SURPLUS_GIA_NAME = "{name} — Surplus GIA (Global Tracker)"
 SURPLUS_ISA_NAME = "{name} — Surplus ISA (Global Tracker)"
 
@@ -192,6 +198,7 @@ class Plan:
 
     cash_slot: int
     ladder_slot: int
+    bond_slot: int
     series_keys: frozenset[str]
 
     year_variants: dict[frozenset[str], tuple[PlanYear, ...]]
@@ -451,9 +458,9 @@ def compile_plan(
     ]
     spendable = spendable + surplus_gia
 
-    slot_names = [a.name for a in spendable] + [CASH_RESERVE, LADDER_RESERVE]
+    slot_names = [a.name for a in spendable] + [CASH_RESERVE, LADDER_RESERVE, BOND_RESERVE]
     slot_of = {name: i for i, name in enumerate(slot_names)}
-    opening = [a.value for a in spendable] + [0.0, 0.0]
+    opening = [a.value for a in spendable] + [0.0, 0.0, 0.0]
 
     isa_slots = tuple(slot_of[a.name] for a in spendable if a.type is AssetType.ISA)
     isa_slots_by_person: dict[str, tuple[int, ...]] = {
@@ -474,7 +481,7 @@ def compile_plan(
     }
     investable = tuple(
         sorted(
-            {slot_of[CASH_RESERVE], slot_of[LADDER_RESERVE]}
+            {slot_of[CASH_RESERVE], slot_of[LADDER_RESERVE], slot_of[BOND_RESERVE]}
             | set(isa_slots)
             | {s for slots in dc_slots.values() for s in slots}
             | {s for slots in gia_slots_by_person.values() for s in slots}
@@ -703,5 +710,6 @@ def compile_plan(
         investable_slots=investable,
         cash_slot=slot_of[CASH_RESERVE],
         ladder_slot=slot_of[LADDER_RESERVE],
+        bond_slot=slot_of[BOND_RESERVE],
         series_keys=series_keys,
     )

@@ -31,10 +31,15 @@ class DrawdownContext:
     gia_slots_by_person: dict[str, tuple[int, ...]]
     cash_slot: int
     ladder_slot: int
+    bond_slot: int
     dc_accessible_by_person: dict[str, bool]
     is_retired: bool
     essential_spend: float
     growth_return: float
+    bond_return: float
+    """This year's real `gov_bonds` return -- distinct from `growth_return`
+    (equity). For a strategy whose middle tier is genuine bonds rather than
+    another fixed-rate cash-like reserve; see `ThreeBucketStrategy`."""
     isa_headroom_used: dict[str, float]
     """Mutable, shared for the whole plan-year across every mechanism that
     can credit someone's ISA -- the surplus sweep, a PCLS or DB lump sum,
@@ -165,6 +170,13 @@ def credit_isa(
 class DrawdownStrategy(ABC):
     def reset(self) -> None:
         """Clear per-run state. Called once at the start of every trial."""
+
+    def series_keys(self) -> frozenset[str]:
+        """Market series this strategy needs, for the sample-window
+        intersection -- see `AllocationStrategy.series_keys`. Most built-in
+        strategies need nothing beyond what the household's own assets
+        already require; `ThreeBucketStrategy` is the exception."""
+        return frozenset()
 
     @abstractmethod
     def resolve(
@@ -427,3 +439,85 @@ class CashBondLadder(DrawdownStrategy):
         shortfall = target - portfolio.balances[ctx.ladder_slot]
         if ctx.growth_return >= 0 and shortfall > 0:
             portfolio.balances[ctx.ladder_slot] += portfolio.draw_pro_rata(ctx.isa_slots, shortfall)
+
+
+@dataclass
+class ThreeBucketStrategy(DrawdownStrategy):
+    """The classic three-bucket retirement income strategy: cash for
+    near-term spending, bonds as the refill layer, equities for long-term
+    growth -- Harold Evensky's original structure, popularised for retail
+    investors by Christine Benz at Morningstar. Genuinely three tiers,
+    unlike `CashBondLadder`'s single fixed-rate reserve:
+
+    **Bucket 1 (cash)** -- `cash_years` of essential spending (2, by
+    convention), held at zero real return. Spent first, refilled from
+    Bucket 2 *every year*, unconditionally -- bonds are the shock absorber
+    for near-term spending here, not a matter of market timing.
+
+    **Bucket 2 (bonds)** -- `bond_years` further years of essential spending
+    (5, by convention), earning the real `gov_bonds` series
+    (`ctx.bond_return`) rather than a fixed rate -- a genuine bond holding
+    with its own volatility, not another cash-like reserve dressed up as
+    one. Refilled from Bucket 3 only in years equities are up: the actual
+    "don't sell stocks in a crash" mechanic the strategy is known for.
+
+    **Bucket 3 (equities)** -- everything else, spent last via the ordinary
+    ISA/GIA/pension fallback once both reserves are empty.
+
+    Both reserves are seeded once, at retirement, from the ISA -- 7 years of
+    spending (the sum of the two defaults) carved out of the growth
+    portfolio up front, matching the canonical "stocks for everything beyond
+    year 7" description of this strategy.
+    """
+
+    cash_years: float = 2.0
+    bond_years: float = 5.0
+    seeded: bool = field(default=False, init=False, repr=False)
+
+    def series_keys(self) -> frozenset[str]:
+        return frozenset({"gov_bonds"})
+
+    def reset(self) -> None:
+        self.seeded = False
+
+    def resolve(self, need, portfolio, taxable_income, ctx):
+        result = DrawResult()
+        need -= portfolio.draw_pro_rata((ctx.cash_slot,), need)
+        need -= portfolio.draw_pro_rata((ctx.bond_slot,), need)
+        result.unmet = _draw_isa_gia_then_pensions(need, portfolio, taxable_income, ctx, result)
+        return result
+
+    def end_of_year(self, portfolio, taxable_income, ctx):
+        # The bond bucket earns real bond returns -- an actual holding, not
+        # a fixed-rate reserve dressed up as one.
+        portfolio.balances[ctx.bond_slot] *= 1.0 + ctx.bond_return
+        if not ctx.is_retired:
+            return
+
+        cash_target = self.cash_years * ctx.essential_spend
+        bond_target = self.bond_years * ctx.essential_spend
+
+        if not self.seeded:
+            portfolio.balances[ctx.cash_slot] += portfolio.draw_pro_rata(ctx.isa_slots, cash_target)
+            portfolio.balances[ctx.bond_slot] += portfolio.draw_pro_rata(ctx.isa_slots, bond_target)
+            self.seeded = True
+            return
+
+        # Bucket 1 refilled from Bucket 2 every year, unconditionally --
+        # bonds are the buffer for near-term spending, not a timing call.
+        # If bonds themselves are short, top up straight from equities
+        # rather than leave the one bucket meant to never run dry empty.
+        cash_shortfall = cash_target - portfolio.balances[ctx.cash_slot]
+        if cash_shortfall > 0:
+            from_bonds = portfolio.draw_pro_rata((ctx.bond_slot,), cash_shortfall)
+            portfolio.balances[ctx.cash_slot] += from_bonds
+            cash_shortfall -= from_bonds
+            if cash_shortfall > 0:
+                portfolio.balances[ctx.cash_slot] += portfolio.draw_pro_rata(ctx.isa_slots, cash_shortfall)
+
+        # Bucket 2 refilled from Bucket 3 only in years equities are up --
+        # the actual "don't sell stocks in a crash" rule this strategy is
+        # known for.
+        bond_shortfall = bond_target - portfolio.balances[ctx.bond_slot]
+        if ctx.growth_return >= 0 and bond_shortfall > 0:
+            portfolio.balances[ctx.bond_slot] += portfolio.draw_pro_rata(ctx.isa_slots, bond_shortfall)

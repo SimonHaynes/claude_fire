@@ -17,6 +17,7 @@ from .drawdown import (
     DrawResult,
     StandardOrder,
     TaxEfficientOrder,
+    ThreeBucketStrategy,
     credit_isa,
     isa_recipients,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "StandardOrder",
     "StaticMix",
     "TaxEfficientOrder",
+    "ThreeBucketStrategy",
     "VariablePercentage",
     "credit_isa",
     "isa_recipients",
