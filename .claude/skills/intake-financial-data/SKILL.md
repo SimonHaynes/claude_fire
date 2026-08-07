@@ -24,22 +24,20 @@ that default (they hold everything in cash, say, or subscribe to a partner's
 ISA instead of their own) — that is a real per-household fact worth
 capturing, the mechanism above is not.
 
-**Always give every adult an ISA `Asset`, even at `value=0.0` if they hold
-nothing in one today — and a GIA too, if the household's situation makes one
-plausible.** This is not optional polish. The GIA is synthesised
-automatically if you omit it (`Alex — Surplus GIA`), but the **ISA is not** —
-`plan.py` builds `isa_slots_by_person` purely from `Asset`s of type `ISA`
-already in the household, with no fallback. Skip it because the client
-currently holds none, and every mechanism that would otherwise use one —
-surplus investment, PCLS proceeds, Bed-and-ISA sweeping a GIA down over
-time — silently has nowhere to put money, for the entire plan, with no error
-raised. This is a real bug that shipped once: a PCLS-and-invest scenario for
-a household with no ISA `Asset` quietly left the whole tax-free lump sum
-sitting in a GIA, paying CGT and dividend tax for 35 years, because there was
-no ISA slot for it to ever be swept into. **The client not currently having
-an ISA is a fact about their history, not a constraint on the plan** — anyone
-can open one, and the model should always make it *possible* to use one, even
-if a given scenario chooses not to.
+**A person with no ISA `Asset` gets one anyway — `plan.py` synthesises a
+zero-balance ISA per person who doesn't already have one, the same way it
+already synthesises a GIA.** You do not need to add a placeholder to make
+sheltering possible; that used to be a real gap (a household with no ISA
+`Asset` had nowhere for surplus, a PCLS or Bed-and-ISA to shelter money, for
+the whole plan, with no error — it once understated a PCLS comparison by
+tens of thousands of pounds) and is now closed at the engine level.
+
+**Still record an explicit `ISA` `Asset` whenever the client actually holds
+one.** The synthetic fallback opens at zero and uses a generic tracker
+return — it is a safety net for "holds none today," not a substitute for the
+client's real account, its real balance, or a return model that actually
+matches what it's invested in. Skipping a real ISA because "the engine will
+add one anyway" silently understates the household's current wealth.
 
 **Real client directories are gitignored** (everything under `workspace/`
 except `workspace/sample_client/` — see `.gitignore`). That is deliberate:

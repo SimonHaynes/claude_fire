@@ -36,6 +36,7 @@ from .timeline import add_years, age_on, debt_payment_schedule, earliest, months
 CASH_RESERVE = "__cash_reserve"
 LADDER_RESERVE = "__ladder_reserve"
 SURPLUS_GIA_NAME = "{name} — Surplus GIA (Global Tracker)"
+SURPLUS_ISA_NAME = "{name} — Surplus ISA (Global Tracker)"
 
 
 def _annual(amount: float, frequency: Frequency) -> float:
@@ -416,6 +417,27 @@ def compile_plan(
 
     # --- ledger layout -----------------------------------------------------
     spendable = [a for a in household.assets if a.type is not AssetType.DB_PENSION]
+
+    # A synthetic ISA per person who does not already have an explicit one --
+    # unlike the GIA below, an ISA is not added unconditionally, because it
+    # has a real annual subscription limit and a household that already
+    # models one should not gain a second, mostly-dead slot alongside it.
+    # Without this, a household intake built with no ISA `Asset` (because the
+    # client currently holds none) has nowhere for surplus income, a PCLS, or
+    # Bed-and-ISA to ever shelter money -- not a modelling choice, a silent
+    # gap: `credit_isa` and `_bed_and_isa` both no-op with zero ISA headroom
+    # rather than erroring, so the money just sits in the GIA, taxed, for the
+    # whole plan. Not currently holding an ISA is a fact about the client's
+    # past, not a ceiling on what the plan can consider -- anyone can open
+    # one, so the engine now always makes it possible to.
+    people_with_isa = {a.owner for a in household.assets_of(AssetType.ISA)}
+    surplus_isa = [
+        Asset(SURPLUS_ISA_NAME.format(name=name), AssetType.ISA, name, 0.0,
+              returns=SampledSeries("global_equity"))
+        for name in people
+        if name not in people_with_isa
+    ]
+    spendable = spendable + surplus_isa
 
     # A synthetic GIA per person, present whether or not the household has an
     # explicit one, so surplus income above ISA headroom always has somewhere

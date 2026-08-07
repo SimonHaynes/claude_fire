@@ -325,7 +325,12 @@ class TestSurplusInvesting:
         assert year.balances["A ISA"] == pytest.approx(year.net_cashflow / 2, abs=0.01)
         assert year.balances["B ISA"] == pytest.approx(year.net_cashflow / 2, abs=0.01)
 
-    def test_a_person_with_no_isa_overflows_straight_to_their_gia(self, flat_market):
+    def test_a_person_with_no_explicit_isa_still_gets_one_synthesised(self, flat_market):
+        """A household built with no ISA `Asset` (the client holds none
+        today) must not lose the ability to shelter surplus in one -- see
+        `SURPLUS_ISA_NAME` in plan.py. Fills the synthetic ISA to the annual
+        allowance first, same as an explicit one would, then overflows to
+        the GIA."""
         household = Household(
             people=[Person("Alex", date(1975, 1, 1))],
             incomes=[IncomeSource("Alex", IncomeType.SALARY, 80_000, Frequency.YEARLY)],
@@ -336,8 +341,9 @@ class TestSurplusInvesting:
         scenario = Scenario("no retirement", withdrawal=SpendNominal())
         projection = run(household, scenario, flat_market)
         year = projection.years[0]
+        assert year.balances["Alex — Surplus ISA (Global Tracker)"] == pytest.approx(20_000, abs=0.01)
         assert year.balances["Alex — Surplus GIA (Global Tracker)"] == pytest.approx(
-            year.net_cashflow, abs=0.01
+            year.net_cashflow - 20_000, abs=0.01
         )
         assert year.balances["__cash_reserve"] == pytest.approx(0.0)
 

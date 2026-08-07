@@ -23,7 +23,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (

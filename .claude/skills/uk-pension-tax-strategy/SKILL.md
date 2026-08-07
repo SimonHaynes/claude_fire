@@ -124,21 +124,21 @@ Every household carries a per-person General Investment Account by default
 drawdown strategy spends it in the same place: **ISA, then GIA, then
 pension.** The reasoning:
 
-**The GIA is synthetic. The ISA is not, and that asymmetry is a real trap.**
-`isa_slots_by_person` is built purely from `ISA`-type `Asset`s already in the
-household — there is no fallback, unlike the GIA. A household intake defined
-without an ISA `Asset` (because the client currently holds none) has *nowhere
-for the engine to shelter anything, ever*: not surplus income, not a PCLS
-lump sum, not Bed-and-ISA sweeping a GIA down — all of it silently stays in
-the GIA, paying CGT and dividend tax for the rest of the plan, with no error
-and no warning. This shipped once: a full PCLS-and-invest comparison
-understated PCLS's tax advantage by tens of thousands of pounds over 30+
-years because the household simply had no ISA `Asset` to sweep into.
-**Before recommending or comparing anything that routes money toward an
-ISA — PCLS, `TaxEfficientOrder`, a surplus-income projection — confirm every
-relevant person has an `ISA` `Asset` in the household, even at `value=0.0`.**
-See `intake-financial-data`, which now does this by default; if a household
-was built before that changed, add the asset rather than assume it exists.
+**A person with no ISA `Asset` gets a synthetic one too** (`{name} — Surplus
+ISA (Global Tracker)`), the same way the GIA below has always been
+synthesised — so surplus income, a PCLS lump sum, or Bed-and-ISA always has
+somewhere to shelter money up to the annual allowance, whether or not intake
+recorded a real ISA for that person. This closed a real gap: before it, a
+household with no explicit ISA `Asset` had nowhere for any of that to go,
+ever, and everything intended for an ISA silently stayed in the GIA instead —
+paying CGT and dividend tax for the rest of the plan, with no error. A full
+PCLS-and-invest comparison understated PCLS's tax advantage by tens of
+thousands of pounds over 30+ years this way before the fix.
+
+**Still record the client's real ISA explicitly whenever they have one.**
+The synthetic fallback opens at zero — it is there so the *possibility* of
+sheltering money always exists, not as a substitute for the household's
+actual current balance.
 
 - **CGT (18%/24%, £3,000 exempt every year) is usually cheaper than income
   tax on an equivalent pension withdrawal**, so a GIA should empty before a

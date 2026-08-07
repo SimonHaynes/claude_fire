@@ -239,9 +239,11 @@ class TestSpouseIsaSpillover:
         # to go once both allowances are full, so it lands in Pat's own GIA.
         assert first.balances["Pat — Surplus GIA (Global Tracker)"] == pytest.approx(35_000, abs=1.0)
 
-    def test_a_spouse_with_no_isa_gets_no_spillover(self):
-        """No ISA slot for the spouse means no legal destination -- the
-        excess must fall to the owner's own GIA, not vanish or error."""
+    def test_a_spouse_with_no_explicit_isa_still_gets_the_spillover(self):
+        """A spouse with no ISA `Asset` still gets a synthetic one (see
+        `SURPLUS_ISA_NAME` in plan.py), so spillover has somewhere to land --
+        only the true remainder, beyond both people's £20,000 headroom,
+        falls to the owner's own GIA."""
         household = Household(
             people=[Person("Pat", date(1969, 1, 1)), Person("Robin", date(1972, 1, 1))],
             assets=[
@@ -255,7 +257,8 @@ class TestSpouseIsaSpillover:
         plan = compile_plan(household, scenario, UK, AS_OF)
         first = project(plan, [FLAT] * plan.n_years).years[0]
         assert first.balances["Pat ISA"] == pytest.approx(20_000, abs=1.0)
-        assert first.balances["Pat — Surplus GIA (Global Tracker)"] == pytest.approx(55_000, abs=1.0)
+        assert first.balances["Robin — Surplus ISA (Global Tracker)"] == pytest.approx(20_000, abs=1.0)
+        assert first.balances["Pat — Surplus GIA (Global Tracker)"] == pytest.approx(35_000, abs=1.0)
 
 
 class TestTaxEfficientOrder:
