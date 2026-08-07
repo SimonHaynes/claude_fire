@@ -181,26 +181,82 @@ double past. If a household has only one ISA (or one person has none),
 this reduces to the single-person £20,000 case automatically — there is no
 separate code path to keep in sync.
 
-## The tax-free lump sum (PCLS)
+## The tax-free lump sum: PCLS vs UFPLS
 
-25% of the pot, **capped at £268,275**. The cap is 25% of the old Lifetime
-Allowance and did not rise with pot values, so it binds for anyone above about
-£1.07m — exactly the people who assume "25% tax-free" applies to all of it.
-Check `tax.pcls_available(pot)` rather than multiplying by 0.25.
+Two different mechanisms get tax-free cash out of a DC pension, and they are
+not interchangeable.
 
-Taking PCLS alone does **not** trigger the MPAA. Taking any *taxable* income
-does, permanently cutting money-purchase contribution room from £60,000 to
-£10,000 — which matters for anyone who might return to work or keep
-contributing.
+**PCLS + flexi-access drawdown.** Crystallise some or all of the pot in one
+event; take up to 25% of *what you crystallise* as tax-free cash, **capped at
+£268,275** (25% of the old Lifetime Allowance figure, which did not rise with
+pot values, so it binds for anyone above about £1.07m — exactly the people
+who assume "25% tax-free" applies to all of it; check `tax.pcls_available(pot)`
+rather than multiplying by 0.25). The remaining 75% moves into a drawdown
+account and stays invested; you decide separately, later, how much *taxable*
+income to draw from it, including none at all.
+
+**UFPLS (Uncrystallised Funds Pension Lump Sum).** Take a lump sum directly
+from the uncrystallised pot, no drawdown wrapper. Every payment is
+automatically 25% tax-free / 75% taxable in the same instant — there is no
+way to take the tax-free part on its own.
+
+**The decisive practical difference is the MPAA.** Taking PCLS alone does
+**not** trigger it. Taking *any* taxable income does — permanently cutting
+money-purchase contribution room from £60,000 to £10,000 — and a UFPLS
+cannot be taken without a taxable slice, so **every UFPLS triggers it
+immediately**, even a small one. This dominates the decision for anyone still
+contributing meaningfully to a pension: PCLS + drawdown (crystallise, take
+the tax-free cash, leave the 75% untouched) preserves the full Annual
+Allowance; UFPLS does not.
+
+**For someone who has stopped contributing, the choice comes down to the Lump
+Sum Allowance.** Above it (pot > £1,073,100), there is no future benefit to
+waiting — value above the cap never gets tax-free treatment whether taken now
+or in ten years, so take the maximum PCLS immediately, invest it (see the GIA
+section below), and start reducing the eventual beneficiary-income-tax
+exposure on that slice. Below it, UFPLS's incremental, no-commitment
+withdrawals are the more natural fit — draw what's needed, when it's needed,
+without forcing a crystallisation event or a drawdown pot to manage.
+
+**Delaying crystallisation on a pot comfortably below the LSA genuinely grows
+the tax-free entitlement, in absolute pounds, alongside the pot** — confirmed,
+this is correct, and worth stating explicitly because it's easy to get
+backwards. Crystallising early locks in a PCLS calculated on today's
+(smaller) value; every pound of growth on the 75% left in drawdown after that
+is now part of a pot that only ever produces *taxable* income, never more
+tax-free cash. Leave it uncrystallised instead, and 25% of a *larger* future
+value is tax-free when it's eventually accessed. This stops mattering once
+the pot's projected 25% would reach the LSA cap — beyond that point further
+growth buys no additional tax-free entitlement, only a larger taxable
+balance (still growing free of CGT and dividend tax inside the pension
+wrapper, which a GIA does not offer, but not generating more tax-free cash).
+
+**This is an argument about the owner's own eventual spending, not a
+universal "always delay."** It can conflict with the decision rule above
+("move money from pension to ISA whenever your rate now is below your
+beneficiary's rate later") for a pot that is more likely to be inherited than
+spent: money left uncrystallised avoids nothing on the IHT side once
+pensions enter the estate in April 2027, and if the eventual death is after
+75, the beneficiary still pays income tax on it at their own rate — the
+extra tax-free entitlement from delaying only helps if the *owner* lives to
+use it. Run both framings rather than defaulting to either.
 
 **Recycling anti-avoidance:** you cannot take a PCLS and pay it back into a
 pension for further relief. The test bites where contributions rise by more
 than 30% of the PCLS across a five-year window. Moving PCLS into an *ISA* is
 not caught by this; paying it into a pension is.
 
-**The engine invests it, not you** — see the GIA section above. A PCLS
-landing in cash in a trace or a fan chart is a regression, not a modelling
-choice to explain away.
+**The engine invests PCLS proceeds, not you** — see the GIA section below. A
+PCLS landing in cash in a trace or a fan chart is a regression, not a
+modelling choice to explain away.
+
+**UFPLS itself is not modelled.** `Scenario.take_pcls` only represents
+PCLS + drawdown — there is no mechanism for a withdrawal with a fixed 25/75
+tax-free/taxable split and its own immediate MPAA trigger. This doesn't
+matter for the above-LSA or still-contributing cases above, where PCLS +
+drawdown is the right answer anyway — but for a below-LSA household that has
+stopped contributing, where UFPLS is genuinely the better strategy, the
+engine cannot represent it. See REVIEW.md 1.14.
 
 ## Estate planning beyond drawdown
 

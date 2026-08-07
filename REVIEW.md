@@ -246,6 +246,26 @@ than issuer-specific; and reinvestment risk is ignored — a ladder maturing in
 a low-rate world reinvests at lower yields, which the fixed `nominal_yield`
 does not capture.
 
+### 1.14 No UFPLS — only PCLS + drawdown is modelled — **medium**
+
+`Scenario.take_pcls` is a single boolean: crystallise and take the maximum
+tax-free lump sum, or don't. There is no way to model an Uncrystallised
+Funds Pension Lump Sum — a withdrawal taken directly from the uncrystallised
+pot, automatically split 25% tax-free / 75% taxable, with no separate
+drawdown wrapper.
+
+This doesn't matter for a household above the Lump Sum Allowance threshold
+(pot > £1,073,100, so 25% > £268,275) or for anyone still contributing
+meaningfully to a pension — PCLS + drawdown is the right answer in both
+cases anyway, the second because UFPLS triggers the MPAA immediately and
+PCLS-only does not (see `uk-pension-tax-strategy`). It matters for a
+household below that threshold who has stopped contributing and wants
+simple, incremental access to a modest pot — UFPLS is the more natural
+mechanism there, and the engine cannot represent it. Approximating it with a
+smaller `take_pcls` lump plus manual taxable drawdown does not reproduce
+UFPLS's actual mechanics (the fixed 25/75 split on every withdrawal) or its
+immediate MPAA trigger.
+
 ---
 
 ## 2. Skills and agents

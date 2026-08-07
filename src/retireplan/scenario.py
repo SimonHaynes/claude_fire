@@ -74,10 +74,17 @@ class Scenario:
     binds for any pot above about £1.07m, so the familiar "25% tax-free" is
     not the whole 25% for exactly the people who assume it is.
 
-    The proceeds land in the cash reserve, which is spent before anything
-    else. That is deliberately conservative: it neither assumes ISA
-    subscription room that may not exist, nor credits the lump sum with
-    tax-free growth it would only earn once actually reinvested.
+    The proceeds are invested via `_invest_for_person`: the owner's own ISA
+    first (then a spouse's if theirs is full), then the owner's GIA, and only
+    cash if neither exists -- the same routing ordinary income surplus gets,
+    since a PCLS belongs to the person it came from and has no more reason to
+    sit idle than any other windfall. It is not spent down as a buffer before
+    other assets; it is invested and drawn from alongside them by whichever
+    `DrawdownStrategy` the scenario uses. Note the fallback GIA (present for
+    every person whether or not the household has an explicit one) always
+    uses `SampledSeries("global_equity")` -- real historical returns -- even
+    in an otherwise fixed-return household, so a deterministic single-path
+    check involving PCLS will still show market-path variation there.
     """
 
     market_stress: tuple[Mapping[str, float], ...] = ()
