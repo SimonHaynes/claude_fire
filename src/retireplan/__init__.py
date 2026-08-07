@@ -23,7 +23,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (
@@ -73,6 +73,7 @@ from .strategies import (
     StandardOrder,
     StaticMix,
     TaxEfficientOrder,
+    ThreeBucketStrategy,
     VariablePercentage,
 )
 from .tax.iht import UK_IHT, BequestBreakdown, IHTRules, effective_pension_death_rate
@@ -100,7 +101,7 @@ __all__ = [
     "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest", "SimulationResult", "run_monte_carlo", "project_once",
     # strategies
     "ByAssetTypeMix", "CashBondLadder", "GlidePath",
-    "GuytonKlinger", "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal", "StandardOrder", "StaticMix", "TaxEfficientOrder",
+    "GuytonKlinger", "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal", "StandardOrder", "StaticMix", "TaxEfficientOrder", "ThreeBucketStrategy",
     # tax
     "UK", "UKTaxSystem", "UK_IHT", "IHTRules", "BequestBreakdown",
     "effective_pension_death_rate",

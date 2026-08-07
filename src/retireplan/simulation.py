@@ -421,12 +421,20 @@ def run_monte_carlo(
     )
 
     # The asset-mix breakdown: every slot's balance, grouped by AssetType.
-    # Cash reserve and ladder reserve are synthetic (not in plan.assets, so
-    # they carry no AssetType of their own) and are grouped under "cash".
+    # This is a wrapper-type breakdown (isa/gia/pension/cash/property), not
+    # an asset-class one -- there is no separate "bonds" category anywhere in
+    # this engine, a bond holding is just an asset whose ReturnModel happens
+    # to sample gov_bonds. The cash reserve, ladder reserve and bond reserve
+    # are all synthetic (not in plan.assets, so they carry no AssetType of
+    # their own) and are grouped under "cash" for the same reason -- the bond
+    # reserve is a real, volatile bond holding despite the label, which a
+    # reader of `asset_type_percentiles["cash"]` should know.
     slots_by_type: dict[str, list[int]] = {}
     for slot, asset in enumerate(plan.assets):
         slots_by_type.setdefault(asset.type.value, []).append(slot)
-    slots_by_type.setdefault(AssetType.CASH.value, []).extend([plan.cash_slot, plan.ladder_slot])
+    slots_by_type.setdefault(AssetType.CASH.value, []).extend(
+        [plan.cash_slot, plan.ladder_slot, plan.bond_slot]
+    )
 
     # The household ends at the second death. Under a fixed life expectancy
     # that is known up front; with mortality sampled it differs per trial, so
