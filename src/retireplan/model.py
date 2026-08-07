@@ -57,6 +57,30 @@ class Phase(str, Enum):
     RETIREMENT = "retirement"
 
 
+class PensionAccess(str, Enum):
+    """How a DC pension's tax-free entitlement is realised, if at all.
+
+    Lives here rather than in `scenario.py` so both `scenario.py` and
+    `strategies/drawdown.py` can import it without a circular import --
+    `scenario.py` already imports from `strategies`.
+    """
+
+    NONE = "none"
+    """Every withdrawal is fully taxable. No lump sum is ever taken -- the
+    previous, and still default, behaviour."""
+
+    PCLS = "pcls"
+    """Crystallise the whole pot the moment it becomes accessible and take
+    the maximum tax-free lump sum in one event (25%, capped by the Lump Sum
+    Allowance). Every withdrawal after that is fully taxable."""
+
+    UFPLS = "ufpls"
+    """No crystallisation event. Every withdrawal from the pot is
+    automatically split 25% tax-free / 75% taxable, until the Lump Sum
+    Allowance is used up, after which further withdrawals are fully
+    taxable. See `uk-pension-tax-strategy` for when this beats PCLS."""
+
+
 @dataclass
 class Person:
     name: str

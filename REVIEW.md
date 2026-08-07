@@ -246,25 +246,32 @@ than issuer-specific; and reinvestment risk is ignored — a ladder maturing in
 a low-rate world reinvests at lower yields, which the fixed `nominal_yield`
 does not capture.
 
-### 1.14 No UFPLS — only PCLS + drawdown is modelled — **medium**
+### 1.14 No UFPLS — only PCLS + drawdown is modelled — **medium** — NOW MODELLED
 
-`Scenario.take_pcls` is a single boolean: crystallise and take the maximum
-tax-free lump sum, or don't. There is no way to model an Uncrystallised
-Funds Pension Lump Sum — a withdrawal taken directly from the uncrystallised
-pot, automatically split 25% tax-free / 75% taxable, with no separate
-drawdown wrapper.
+`Scenario.take_pcls` used to be a single boolean: crystallise and take the
+maximum tax-free lump sum, or don't. There was no way to model an
+Uncrystallised Funds Pension Lump Sum — a withdrawal taken directly from the
+uncrystallised pot, automatically split 25% tax-free / 75% taxable, with no
+separate drawdown wrapper.
 
-This doesn't matter for a household above the Lump Sum Allowance threshold
-(pot > £1,073,100, so 25% > £268,275) or for anyone still contributing
-meaningfully to a pension — PCLS + drawdown is the right answer in both
-cases anyway, the second because UFPLS triggers the MPAA immediately and
-PCLS-only does not (see `uk-pension-tax-strategy`). It matters for a
-household below that threshold who has stopped contributing and wants
-simple, incremental access to a modest pot — UFPLS is the more natural
-mechanism there, and the engine cannot represent it. Approximating it with a
-smaller `take_pcls` lump plus manual taxable drawdown does not reproduce
-UFPLS's actual mechanics (the fixed 25/75 split on every withdrawal) or its
-immediate MPAA trigger.
+**Shipped.** `Scenario.pension_access: PensionAccess` (`NONE` / `PCLS` /
+`UFPLS`) replaces the boolean. Under `UFPLS`, every withdrawal the drawdown
+strategies make from an accessible DC pension is split 25% tax-free / 75%
+taxable, capped by remaining Lump Sum Allowance headroom, solved exactly
+(`RateSchedule.gross_for_net_partly_relieved` — closed-form band-walking,
+not a search, cross-checked against 2,000+ random cases by bisection to
+£1e-10). PCLS and UFPLS share one lifetime tax-free-cash counter per person,
+so taking a PCLS lump sum reduces what UFPLS can still give tax-free, and
+vice versa. Also added: `Scenario.pension_lump_sums`, a one-off dated
+withdrawal (`PensionLumpSum`) — a partial crystallisation, for "I want
+£50,000 of cash now" without touching the ongoing `pension_access` mode.
+
+*Still not modelled:* the Money Purchase Annual Allowance itself — the
+engine doesn't cap contributions after a taxable withdrawal, under any of
+`NONE`, `PCLS` or `UFPLS`, so a household still contributing after triggering
+it will overstate how much further relief they get. Both `TaxEfficientOrder`
+and the account of when PCLS vs UFPLS wins in `uk-pension-tax-strategy` say
+so, but nothing in the engine enforces it.
 
 ---
 
@@ -332,6 +339,8 @@ would otherwise have shipped.
 | HTML entity leaked into the PDF footer | Reading rendered pages | `Pat &amp; Robin` in print |
 | Sampled-credit window collapsed to 18 years, producing 100% success | Sanity-checking a suspiciously round number | False confidence |
 | `Scenario.death_ages` silently ignored by `run_monte_carlo` | A survivor variant returned results identical to its base *to the pound* | First-death scenarios were untestable; the knob keyed the cache but changed nothing |
+| `take_pcls`'s docstring claimed proceeds landed in cash "spent before anything else" | Tracing actual balances in a test run, not trusting the comment | Would have misled anyone reading the doc rather than the code; the code was already correct |
+| PCLS greedily claimed the whole Lump Sum Allowance before a same-day `PensionLumpSum` request got to it | A test asserting the two should share the allowance failed with PCLS taking the full £268,275 | An explicit request would have silently received none of the relief it asked for, if scheduled the same plan-year as automatic PCLS-at-access |
 
 The pattern: **every one was caught by looking at a number that seemed too
 good, or by rendering the output and reading it.** Neither is automatable.
