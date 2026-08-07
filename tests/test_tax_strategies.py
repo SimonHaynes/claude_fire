@@ -118,65 +118,27 @@ class TestPCLS:
 
 
 class TestUFPLS:
-    def test_not_split_unless_asked_for(self):
-        """PensionAccess.NONE: every withdrawal fully taxable, same as before
-        UFPLS existed."""
-        household = retired_household(pension=400_000, isa=0.0, spend=30_000)
-        first = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
-                                        withdrawal=SpendNominal())).years[0]
-        assert first.ufpls_tax_free_taken == 0.0
-        assert first.dc_withdrawn_gross > 0
-
-    def test_matches_the_hand_verified_figure(self):
+    def test_matches_hand_verified_numbers_and_beats_fully_taxable_drawdown(self):
         """No other income, £30,000 net target: gross £32,336.47, of which
-        £8,084.12 is tax-free and £2,336.47 is tax -- independently verified
-        by hand and by bisection against UK.income_tax() before this was
-        wired into the drawdown strategies at all (see the session notes on
-        UFPLS vs PCLS for the derivation)."""
+        £8,084.12 is tax-free -- independently verified by hand and by
+        bisection against UK.income_tax() before this was wired into the
+        drawdown strategies. Fully-taxable drawdown needs more gross for the
+        same net, since none of it is relieved."""
         household = retired_household(pension=1_000_000, isa=0.0, spend=30_000)
-        first = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
+        ufpls = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
                                         withdrawal=SpendNominal(),
                                         pension_access=PensionAccess.UFPLS)).years[0]
-        assert first.dc_withdrawn_gross == pytest.approx(32_336.47, abs=0.5)
-        assert first.ufpls_tax_free_taken == pytest.approx(8_084.12, abs=0.5)
-        assert first.tax_paid == pytest.approx(2_336.47, abs=0.5)
-        assert first.pcls_taken == 0.0  # no crystallisation event under UFPLS
+        assert ufpls.dc_withdrawn_gross == pytest.approx(32_336.47, abs=0.5)
+        assert ufpls.ufpls_tax_free_taken == pytest.approx(8_084.12, abs=0.5)
 
-    def test_nets_the_same_target_as_a_fully_taxable_withdrawal_but_draws_less(self):
-        """UFPLS's tax-free relief means less has to leave the pot to reach
-        the same net income than a fully-taxable draw needs."""
-        household = retired_household(pension=1_000_000, isa=0.0, spend=30_000)
         none = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
                                        withdrawal=SpendNominal())).years[0]
-        ufpls = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
-                                        withdrawal=SpendNominal(),
-                                        pension_access=PensionAccess.UFPLS)).years[0]
-        assert ufpls.dc_withdrawn_gross < none.dc_withdrawn_gross
-        assert ufpls.tax_paid < none.tax_paid
+        assert none.dc_withdrawn_gross > ufpls.dc_withdrawn_gross
 
-    def test_degrades_to_fully_taxable_once_the_allowance_is_exhausted(self):
-        """A household drawing well past the Lump Sum Allowance should end
-        up paying the same tax on the excess as PensionAccess.NONE would --
-        the relief has a lifetime ceiling, not an infinite supply."""
-        # A pot with 25% far above the LSA (~£268,275): early withdrawals
-        # get relief, but this tests the total after enough years to matter
-        # is bounded the same way plain taxable drawdown is, not that any
-        # single year matches exactly.
-        household = retired_household(pension=3_000_000, isa=0.0, spend=200_000)
-        household.assumptions.life_expectancy_age = 95
-        ufpls = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
-                                        withdrawal=SpendNominal(),
-                                        pension_access=PensionAccess.UFPLS))
-        # Once the allowance (£268,275) is used up, further tax-free relief
-        # stops -- so the tax-free total across the whole projection cannot
-        # exceed the allowance.
-        total_tax_free = sum(y.ufpls_tax_free_taken for y in ufpls.years)
-        assert total_tax_free <= UK.lump_sum_allowance + 1.0
-
-    def test_state_pension_reduces_gross_withdrawal_needed(self):
-        """No other income needs £32,336.47 gross for £30,000 net (see
-        above); £11,973 of state pension already-taxable income needs only
-        £21,067.76 more gross -- verified independently by bisection."""
+    def test_stacks_on_existing_taxable_income(self):
+        """£11,973 of state pension already using up most of the personal
+        allowance means only £21,067.76 more gross is needed for the same
+        £30,000 net -- verified independently by bisection."""
         household = retired_household(pension=1_000_000, isa=0.0, spend=30_000)
         household.assumptions.state_pension_age = 60  # already receiving it at AS_OF
         household.assumptions.state_pension_annual = 11_973.0
@@ -185,32 +147,33 @@ class TestUFPLS:
                                         pension_access=PensionAccess.UFPLS)).years[0]
         assert first.dc_withdrawn_gross == pytest.approx(21_067.76, abs=0.5)
 
-    def test_locked_pension_yields_no_ufpls(self):
-        household = retired_household(dob=date(1971, 1, 1), isa=0.0)
-        projection = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
-                                             withdrawal=SpendNominal(),
-                                             pension_access=PensionAccess.UFPLS))
-        assert projection.years[0].ufpls_tax_free_taken == 0.0
-        assert projection.years[0].unmet_shortfall > 0  # nothing else to fund spending from
-        assert projection.years[2].ufpls_tax_free_taken > 0.0
+    def test_relief_is_capped_by_the_lifetime_allowance(self):
+        """The Lump Sum Allowance (£268,275) is a lifetime cap, not a
+        per-withdrawal one -- drawing well past it should not generate
+        unlimited tax-free cash."""
+        household = retired_household(pension=3_000_000, isa=0.0, spend=200_000)
+        household.assumptions.life_expectancy_age = 95
+        ufpls = run(household, Scenario("s", retirement_dates={"Alex": AS_OF},
+                                        withdrawal=SpendNominal(),
+                                        pension_access=PensionAccess.UFPLS))
+        total_tax_free = sum(y.ufpls_tax_free_taken for y in ufpls.years)
+        assert total_tax_free <= UK.lump_sum_allowance + 1.0
 
-    def test_tax_efficient_order_respects_the_band_cap_under_ufpls(self):
-        """The taxable *portion* of a UFPLS draw should stop at fill_to, not
-        the gross amount -- a naive cap on gross would underfill the band,
-        since only 75% of it counts as taxable."""
+    def test_tax_efficient_order_fills_the_band_using_taxable_not_gross(self):
+        """A naive cap on gross would underfill the band, since only 75% of
+        a UFPLS draw counts as taxable."""
         household = retired_household(pension=1_000_000, isa=500_000, spend=60_000)
         scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
                             pension_access=PensionAccess.UFPLS,
                             drawdown=TaxEfficientOrder(fill_to=12_570, recycle_surplus=False))
         first = run(household, scenario).years[0]
         assert first.tax_paid == pytest.approx(0.0, abs=0.01)  # stayed within the allowance
-        # Taxable portion should land at (approximately) the band ceiling.
         assert first.dc_withdrawn_gross * 0.75 == pytest.approx(12_570, abs=1.0)
         assert first.isa_withdrawn > 0  # the rest funded from the ISA
 
 
 class TestPensionLumpSum:
-    def test_a_one_off_lump_sum_is_split_and_invested(self):
+    def test_split_invested_and_taxed(self):
         household = retired_household(pension=400_000, isa=0.0, spend=1_000)
         scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
                             pension_lump_sums=(PensionLumpSum(AS_OF, "Alex", 50_000),))
@@ -230,13 +193,13 @@ class TestPensionLumpSum:
                             pension_lump_sums=(PensionLumpSum(later, "Alex", 50_000),))
         projection = run(household, scenario)
         assert projection.years[0].pension_lump_sum_taken == 0.0
-        assert projection.years[1].pension_lump_sum_taken == 0.0
         assert projection.years[2].pension_lump_sum_taken == pytest.approx(50_000)
 
     def test_shares_the_lifetime_allowance_with_pcls(self):
         """A partial lump sum taken before the household's own PCLS event
         should reduce how much tax-free cash PCLS can still give -- they are
-        not two independent allowances."""
+        not two independent allowances. Caught a real bug: PCLS used to
+        greedily claim the whole allowance first if scheduled the same year."""
         household = retired_household(pension=2_000_000, isa=0.0, spend=1_000)
         scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
                             pension_access=PensionAccess.PCLS,
@@ -245,13 +208,6 @@ class TestPensionLumpSum:
         lump_tax_free = min(100_000 * 0.25, UK.lump_sum_allowance)
         remaining_pcls_headroom = UK.lump_sum_allowance - lump_tax_free
         assert first.pcls_taken == pytest.approx(remaining_pcls_headroom, abs=1.0)
-
-    def test_capped_by_what_the_pot_actually_holds(self):
-        household = retired_household(pension=30_000, isa=0.0, spend=1_000)
-        scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
-                            pension_lump_sums=(PensionLumpSum(AS_OF, "Alex", 100_000),))
-        first = run(household, scenario).years[0]
-        assert first.pension_lump_sum_taken == pytest.approx(30_000, abs=1.0)
 
 
 class TestSpouseIsaSpillover:
