@@ -191,6 +191,9 @@ def real_return(nominal: float, inflation: float) -> float:
 
 
 def write_csv(path: Path, header: str, columns: list[str], rows: dict[int, tuple]) -> None:
+    # Gitignored and therefore untracked, so a fresh clone has no data/
+    # directory at all -- not just an empty one.
+    path.parent.mkdir(parents=True, exist_ok=True)
     for stale in path.parent.glob(f"{path.stem.split('_')[0]}_{path.stem.split('_')[1]}_*.csv"):
         stale.unlink()
     with path.open("w", encoding="utf-8") as f:

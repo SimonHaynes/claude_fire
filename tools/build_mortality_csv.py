@@ -1,7 +1,19 @@
 """Turn the ONS national life tables workbook into the CSV the engine reads.
 
+    python tools/build_mortality_csv.py --fetch
     python tools/build_mortality_csv.py nltew198020223.xlsx \
         src/retireplan/data/mortality/ons_qx_ew_2022_2024.csv
+
+`--fetch` downloads the current workbook itself, via the "current" link ONS
+keeps pointing at whatever the latest release is (the filename behind it is
+versioned and does change release to release, which is why this script
+doesn't hardcode it). Point it at a file you already have instead if you'd
+rather not depend on that URL surviving, or you're working from an archived
+release.
+
+Either way the target sheet and the CSV's output filename are read from the
+workbook itself -- whichever `\\d{4}-\\d{4}` sheet is most recent -- not
+hardcoded, so a future ONS release with a new period needs no edit here.
 
 Run once per clone (the CSV is gitignored, not committed — see
 DATA_SETUP.md). It exists as a script rather than as a note in a docstring
@@ -21,16 +33,61 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
+import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+DATASET_PAGE = (
+    "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages"
+    "/lifeexpectancies/datasets/nationallifetablesenglandandwalesreferencetables"
+)
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "src" / "retireplan" / "data" / "mortality"
+USER_AGENT = "Mozilla/5.0 (compatible; retireplan-data-fetch/1.0)"
 
 #: Column offsets within a sheet: males start at A, females after a blank
 #: separator column at H. Both blocks are (age, mx, qx, lx, dx, ex).
 MALE_AGE_COL, MALE_QX_COL = 0, 2
 FEMALE_AGE_COL, FEMALE_QX_COL = 7, 9
+
+
+def fetch_current_workbook() -> Path:
+    """Download whatever workbook ONS's "current" link points to right now."""
+    request = urllib.request.Request(DATASET_PAGE, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        html = response.read().decode("utf-8", "replace")
+    match = re.search(r'href="([^"]*/current/[^"]+\.xlsx)"', html)
+    if match is None:
+        raise SystemExit(
+            "couldn't find a 'current/*.xlsx' link on the ONS dataset page -- "
+            "its layout may have changed. Download the workbook by hand from "
+            f"{DATASET_PAGE} and pass its path instead."
+        )
+    url = match.group(1)
+    if url.startswith("/"):
+        url = "https://www.ons.gov.uk" + url
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        data = response.read()
+    tmp = Path(tempfile.mkstemp(suffix=".xlsx")[1])
+    tmp.write_bytes(data)
+    print(f"fetched {url}")
+    return tmp
+
+
+def sheet_names(z: zipfile.ZipFile) -> list[str]:
+    workbook = z.read("xl/workbook.xml").decode("utf-8", "replace")
+    return re.findall(r'<sheet[^>]*name="([^"]+)"', workbook)
+
+
+def latest_period(names: list[str]) -> str:
+    """The most recent `YYYY-YYYY` sheet -- everything else here is notes/methodology tabs."""
+    periods = [n for n in names if re.fullmatch(r"\d{4}-\d{4}", n)]
+    if not periods:
+        raise SystemExit(f"no year-range sheet found among {names!r} -- has the workbook changed shape?")
+    return max(periods, key=lambda p: int(p[:4]))
 
 
 def sheet_path(z: zipfile.ZipFile, sheet_name: str) -> str:
@@ -97,13 +154,27 @@ def extract(rows: list[list[str]]) -> dict[tuple[str, int], float]:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
+    args = sys.argv[1:]
+    fetched: Path | None = None
+
+    if args and args[0] == "--fetch":
+        source = fetched = fetch_current_workbook()
+        destination = Path(args[1]) if len(args) > 1 else None
+    elif len(args) == 2:
+        source, destination = Path(args[0]), Path(args[1])
+    else:
         raise SystemExit(__doc__)
-    source, destination = Path(sys.argv[1]), Path(sys.argv[2])
-    sheet = "2022-2024"
 
     with zipfile.ZipFile(source) as z:
+        names = sheet_names(z)
+        sheet = latest_period(names)
         qx = extract(read_rows(z, sheet_path(z, sheet)))
+
+    if fetched is not None:
+        fetched.unlink()
+
+    if destination is None:
+        destination = DEFAULT_OUTPUT_DIR / f"ons_qx_ew_{sheet.replace('-', '_')}.csv"
 
     ages = sorted({age for _, age in qx})
     if not ages:
@@ -120,8 +191,8 @@ def main() -> None:
             f"# Source: https://www.ons.gov.uk/peoplepopulationandcommunity/"
             f"birthsdeathsandmarriages/lifeexpectancies/datasets/"
             f"nationallifetablesenglandandwalesreferencetables\n"
-            f"# Extracted from {source.name} by tools/build_mortality_csv.py.\n"
-            f"# No figure was transcribed by hand.\n"
+            f"# Extracted by tools/build_mortality_csv.py. No figure was\n"
+            f"# transcribed by hand.\n"
             f"#\n"
             f"# qx is the probability that a person aged exactly x dies before\n"
             f"# reaching x+1, under the mortality rates observed in {sheet}.\n"

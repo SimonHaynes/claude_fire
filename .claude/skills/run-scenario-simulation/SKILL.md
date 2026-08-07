@@ -77,9 +77,13 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
    where every failing trial in one scenario showed a healthy
    `bridge_at_access()` balance despite having run the bridge dry twelve
    months earlier. `None` means the household has no DC pension to unlock,
-   or it's accessible from day one (nothing to check). A range whose low
-   end is close to zero is worth a sentence in the report even if the plan
-   technically succeeded.
+   or pension access age is already reached at the modelling date, i.e. the
+   very first plan-year (nothing to bridge). It does *not* mean access
+   happens at retirement — someone modelled well before their access age
+   will still get a real bridge range for the years between the plan's
+   start and access, even if retirement itself comes later still. A range
+   whose low end is close to zero is worth a sentence in the report even if
+   the plan technically succeeded.
 6. **A failed trial is not necessarily a ruined one — check before saying
    so.** `success_probability` is a single bad year anywhere in the whole
    horizon counting the same as total collapse. Look at the failing trials
