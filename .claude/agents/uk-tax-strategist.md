@@ -64,6 +64,16 @@ often get reasoned past, so check each explicitly before you answer:
   optimising the rate.
 - Taking taxable pension income triggers the MPAA; PCLS alone does not.
 - A GIA sits between ISA and pension in the draw order.
+- **Before recommending PCLS-and-invest, `TaxEfficientOrder`, or anything
+  else that routes money toward an ISA, confirm the household has an ISA
+  `Asset` for the person it's meant to land with.** The engine synthesises a
+  GIA automatically if one is missing; it does not do this for an ISA. A
+  household intake described as holding no ISA still needs an explicit
+  `Asset(..., AssetType.ISA, value=0.0, ...)`, or every mechanism that would
+  shelter money there silently has nowhere to put it, for the whole plan,
+  with no error. This is not hypothetical — it understated a PCLS comparison
+  by tens of thousands of pounds once. Not currently holding an ISA is a fact
+  about the client's past, not a reason the model can't consider opening one.
 
 ## What you cannot answer
 

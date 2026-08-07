@@ -16,14 +16,30 @@ example — notes, household, and the hand-verified arithmetic behind it in
 
 **Surplus income is invested automatically — you don't need to model it.**
 Every plan-year that income exceeds spending, the engine splits the surplus
-equally across the household's people, fills each person's ISA up to the
-£20,000 annual allowance, then routes the rest into a per-person GIA it
-creates for you (see `uk-pension-tax-strategy`'s GIA section). Do not add an
-explicit "savings" `Asset` or `Expense` to model this — it would double it.
-Only ask the client about this if their *actual* behaviour is meant to differ
-from that default (they hold everything in cash, say, or subscribe to a
-partner's ISA instead of their own) — that is a real per-household fact worth
+equally across the household's people and routes it into an ISA (up to the
+£20,000 annual allowance) then a GIA for the rest. Do not add an explicit
+"savings" `Asset` or `Expense` to model this — it would double it. Only ask
+the client about this if their *actual* behaviour is meant to differ from
+that default (they hold everything in cash, say, or subscribe to a partner's
+ISA instead of their own) — that is a real per-household fact worth
 capturing, the mechanism above is not.
+
+**Always give every adult an ISA `Asset`, even at `value=0.0` if they hold
+nothing in one today — and a GIA too, if the household's situation makes one
+plausible.** This is not optional polish. The GIA is synthesised
+automatically if you omit it (`Alex — Surplus GIA`), but the **ISA is not** —
+`plan.py` builds `isa_slots_by_person` purely from `Asset`s of type `ISA`
+already in the household, with no fallback. Skip it because the client
+currently holds none, and every mechanism that would otherwise use one —
+surplus investment, PCLS proceeds, Bed-and-ISA sweeping a GIA down over
+time — silently has nowhere to put money, for the entire plan, with no error
+raised. This is a real bug that shipped once: a PCLS-and-invest scenario for
+a household with no ISA `Asset` quietly left the whole tax-free lump sum
+sitting in a GIA, paying CGT and dividend tax for 35 years, because there was
+no ISA slot for it to ever be swept into. **The client not currently having
+an ISA is a fact about their history, not a constraint on the plan** — anyone
+can open one, and the model should always make it *possible* to use one, even
+if a given scenario chooses not to.
 
 **Real client directories are gitignored** (everything under `workspace/`
 except `workspace/sample_client/` — see `.gitignore`). That is deliberate:

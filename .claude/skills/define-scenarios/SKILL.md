@@ -107,6 +107,28 @@ scenario. Load `uk-pension-tax-strategy` before deciding; do not reach for
 `StandardOrder` by habit just because "spend the ISA first" is the familiar
 rule of thumb.
 
+**Before running anything that routes money toward an ISA, confirm the
+household actually has one.** `TaxEfficientOrder`, `PensionAccess.PCLS`, and
+ordinary surplus investment all assume an `ISA` `Asset` exists for whoever
+they're crediting — the engine will not create one, and silently does
+nothing instead of erroring if it's missing (see `uk-pension-tax-strategy`'s
+GIA section). If intake described a client with no current ISA, that should
+still have produced an `Asset(..., AssetType.ISA, value=0.0, ...)` — go back
+and add it rather than proceed without one. **Not currently holding an ISA
+or GIA is never a reason to model the household as unable to use one** —
+anyone can open either, so the household definition should always make both
+possible, whether or not a given scenario ends up using them.
+
+**Actively consider a variant that opens an ISA (or GIA) where the household
+doesn't already lean on one.** A household sitting on pension-only wealth
+approaching access age, or with meaningful pre-retirement surplus and no
+ISA/GIA activity, is very often better off shifting money into a wrapper
+proactively — cheaper tax now than later, and outside the IHT-exposed
+pension sooner. Don't just enable the mechanism and let the engine use it
+implicitly; when it looks like it would matter, cost it explicitly as a
+named scenario or variant so the report can show *why* it helps, not just
+that a number changed.
+
 ## Cautions
 
 - **Every reported scenario needs a withdrawal strategy chosen on purpose.**
