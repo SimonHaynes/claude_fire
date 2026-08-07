@@ -39,24 +39,34 @@ rebuild is always possible even if the automation needs fixing.
 
 ## Mortality (ONS life tables)
 
-This one step can't be automated: ONS publishes the workbook behind a
-versioned filename that changes with each release, so there is no stable
-URL to fetch.
+```bash
+.venv/bin/python tools/build_mortality_csv.py --fetch
+```
+
+ONS publishes the actual workbook behind a versioned filename that changes
+with each release, but keeps a stable `.../current/<versioned-name>.xlsx`
+link pointing at whichever one is newest — `--fetch` follows that link,
+downloads the workbook, auto-detects the most recent `YYYY-YYYY` sheet
+inside it (also not hardcoded, for the same reason), and writes
+`src/retireplan/data/mortality/ons_qx_ew_<period>.csv`.
+
+If ONS ever restructures that page enough to break the link-scraping (their
+last redesign predates this repo, so treat it as a "when", not "if"), fall
+back to the manual path — same script, one extra step:
 
 1. Open the dataset page: [ONS national life tables, England and
    Wales](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandandwalesreferencetables)
-2. Download the current `.xlsx` reference table.
-3. Run the build script against it:
+2. Download the current `.xlsx` reference table by hand.
+3. Run the build script against the downloaded file instead of `--fetch`:
 
    ```bash
    .venv/bin/python tools/build_mortality_csv.py path/to/downloaded.xlsx \
        src/retireplan/data/mortality/ons_qx_ew_<period>.csv
    ```
 
-The script reads the raw XML inside the `.xlsx` (no dependency needed) and
-refuses to write anything if a sheet it expects is missing or a value looks
-out of range — see its docstring for the sheet name it looks for, which you
-may need to update if ONS renames the current period's tab.
+Either way, the script reads the raw XML inside the `.xlsx` (no dependency
+needed), auto-detects the sheet rather than assuming a fixed period, and
+refuses to write anything if a value looks out of range.
 
 ## Running the tests without data
 

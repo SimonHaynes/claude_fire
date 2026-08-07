@@ -108,6 +108,7 @@ into this repo** — see [Data](#data) below. Fetch it once before running
 ```bash
 cp .env.example .env               # add your own free FRED API key
 .venv/bin/python tools/fetch_market_data.py
+.venv/bin/python tools/build_mortality_csv.py --fetch
 .venv/bin/python -m pytest
 ```
 
@@ -117,9 +118,16 @@ Household definitions live outside the package, under `workspace/` — they
 are data about real people, not library code. `workspace/sample_client/` is
 a fabricated fixture used by the tests and this README; everything else
 under `workspace/` is gitignored, since real financial data should never be
-committed. With Claude Code running in this repo, just describe your
-situation and let the `intake-financial-data` skill do the rest, or set one
-up by hand the same way:
+committed. With Claude Code running in this repo, describe your situation and
+ask it to build you a plan — that invokes the `retirement-planner` agent
+(`.claude/agents/retirement-planner.md`), which runs the whole chain in
+order: `intake-financial-data` to build the household, `define-scenarios` to
+turn your goals into concrete scenarios, `run-scenario-simulation` to
+actually run them, then `build-retirement-report` for the PDF — delegating
+the tax and legal reasoning inside that to two further agents along the way.
+It's several documents deep, not one skill in isolation; you don't need to
+read any of them to use it, only if you want to see the reasoning it's
+following. Or set a household up by hand the same way:
 
 ```bash
 mkdir workspace/<name>
@@ -230,13 +238,14 @@ redistribution terms are unclear enough that this repo ships none of it.
 Instead:
 
 ```bash
-.venv/bin/python tools/fetch_market_data.py     # equity, bond, recession, corporate
-.venv/bin/python tools/build_mortality_csv.py --help   # mortality (manual download step)
+.venv/bin/python tools/fetch_market_data.py            # equity, bond, recession, corporate
+.venv/bin/python tools/build_mortality_csv.py --fetch   # mortality
 ```
 
-See [`DATA_SETUP.md`](DATA_SETUP.md) for exactly what each script fetches,
-from where, and the one manual step (an ONS spreadsheet) that can't be
-automated. In outline:
+See [`DATA_SETUP.md`](DATA_SETUP.md) for exactly what each script fetches and
+from where — including what to do if the ONS page's layout ever changes
+under `--fetch` and it needs a manually-downloaded workbook instead. In
+outline:
 
 - `us_long_*.csv` — S&P 500 and 10-year Treasury total returns (NYU Stern /
   Damodaran) deflated by US CPI. A US proxy for a global portfolio.
