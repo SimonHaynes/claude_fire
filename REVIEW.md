@@ -273,6 +273,60 @@ it will overstate how much further relief they get. Both `TaxEfficientOrder`
 and the account of when PCLS vs UFPLS wins in `uk-pension-tax-strategy` say
 so, but nothing in the engine enforces it.
 
+### 1.15 Cash-buffer and bucket drawdown strategies underperform — tested, not assumed — **high**
+
+`CashBondLadder` and `ThreeBucketStrategy` both exist because "hold a cash
+buffer so you never sell equities in a crash" is close to universal advice.
+Stress-tested both against a same-average-allocation rebalanced portfolio
+(one blended fund, no bucket mechanic) on a single retiree, £1m pot, £40k/yr
+real spend, `StandardOrder`/`SpendNominal`, no state pension: the six classic
+worst historical retirement starts (1929, 1937, 1966, 1973, 2000, 2007)
+deterministically, and 2,000-trial historical block-bootstrap Monte Carlo.
+**Both bucket strategies did worse, not better, than the rebalanced
+comparison — and the more faithfully-implemented one did worse than the
+cruder one:**
+
+| Strategy | Monte Carlo success | Worst-decile (p10) ending wealth |
+|---|---|---|
+| `ThreeBucketStrategy` (2y cash + 5y bonds, the canonical Evensky/Benz form) | 84.5% | £0 |
+| `CashBondLadder` (3y, single fixed-rate reserve) | 87.1% | £0 |
+| All-equity, no buffer at all | 88.8% | £0 |
+| Rebalanced, same average allocation, no bucket mechanic | **92.2%** | **£112,940** |
+
+**Mechanism, traced through the 1973–1987 sequence:** both strategies refill
+their reserve to its *full* target on every qualifying year, not just enough
+to cover that year's actual need. In 1979, 1980 and 1982 — all *positive*
+equity years — the equity sleeve craters anyway, because a full refill pulls
+far more out than the year required. `ThreeBucketStrategy` is worse because
+its reserve is bigger (7 years vs 3), so the periodic over-extraction is
+bigger too, and its cash tier refills from bonds *unconditionally* every
+year regardless of market direction, adding a second drain the simpler
+strategy doesn't have.
+
+**What actually does help, tested the same way: a plain, static equity/bond
+ratio, no bucket mechanic at all.** Same setup, varying `Blend.of` weights —
+success probability peaks at 60% equity (92.8%, worst-decile £144,566),
+comfortably inside Bengen's independently-published 47–75% optimal range,
+and both tails are covered from 80% down to 40% equity. Going too
+conservative is its own failure mode, not just a safer choice: 0% equity
+scored 48.0% success with a **median** ending wealth of zero.
+
+**Practical takeaway for `define-scenarios`:** when the goal is genuinely
+reducing sequence-risk, prefer `StaticMix`/`ByAssetTypeMix` at a tested
+equity percentage over `CashBondLadder` or `ThreeBucketStrategy`. The
+protection people credit to "having a buffer" is actually just holding a
+lower average equity allocation, continuously — the bucket structure itself
+is not merely inert (the earlier, weaker finding from secondary research)
+but actively counter-productive under both refill rules tested here.
+
+**Caveat:** this indicts the specific refill rule tested — top up to full
+target, unconditionally or on any non-negative return year — not bucket
+strategies in general. A gentler rule (partial refills, or refilling only
+after a sustained shortfall) was not built or tested and might behave
+differently. Until it is, treat any bucket/cash-buffer recommendation as
+needing the same stress test before it reaches a client, not an assumed
+good.
+
 ---
 
 ## 2. Skills and agents

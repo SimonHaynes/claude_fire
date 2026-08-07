@@ -127,6 +127,45 @@ implicitly; when it looks like it would matter, cost it explicitly as a
 named scenario or variant so the report can show *why* it helps, not just
 that a number changed.
 
+## Cash buffers and bucket strategies do not reduce sequence risk here — tested, not assumed
+
+**Do not reach for `CashBondLadder` or `ThreeBucketStrategy` on the belief
+that holding a cash/bond buffer protects against selling equities in a
+crash.** Both were stress-tested against a same-average-allocation
+rebalanced portfolio (one blended fund, no bucket mechanic) on the classic
+historical worst retirement starts and a 2,000-trial Monte Carlo — full
+numbers in REVIEW.md 1.15. Both bucket strategies did *worse* than the
+rebalanced comparison, and the more faithfully-implemented three-bucket
+version did worse than the cruder two-bucket one:
+
+| Strategy | Success | Worst-decile ending wealth |
+|---|---|---|
+| `ThreeBucketStrategy` | 84.5% | £0 |
+| `CashBondLadder` | 87.1% | £0 |
+| All-equity, no buffer | 88.8% | £0 |
+| Rebalanced, same average allocation | **92.2%** | **£112,940** |
+
+The mechanism: both strategies top their reserve back up to its *full*
+target on every qualifying year, not just enough to cover that year's
+actual need — which over-extracts from equities in years that were merely
+okay, not genuinely strong, and starves the growth the plan needs over a
+30-year retirement.
+
+**What is genuinely tested to help: a plain, static equity/bond ratio, no
+bucket mechanic at all** — `StaticMix`/`ByAssetTypeMix` at a chosen
+percentage. Same setup, success probability peaked at 60% equity (92.8%),
+comfortably inside Bengen's independently-published 47–75% optimal range,
+with both tails covered from 80% down to 40%. Going too conservative is its
+own failure mode: 0% equity scored 48.0% success with a *median* ending
+wealth of zero. If sequence-risk protection is the goal, model it as an
+allocation decision, not a drawdown-order one.
+
+This is not a blanket claim that no bucket variant could ever help — the
+refill rule tested (top up to full target) is specifically what fails; a
+gentler rule was not built or tested. Until it is, treat any bucket
+recommendation the same way as any other: run the comparison for the actual
+household, don't assume the branding.
+
 ## Cautions
 
 - **Every reported scenario needs a withdrawal strategy chosen on purpose.**
