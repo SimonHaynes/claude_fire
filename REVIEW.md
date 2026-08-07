@@ -341,9 +341,11 @@ would otherwise have shipped.
 | `Scenario.death_ages` silently ignored by `run_monte_carlo` | A survivor variant returned results identical to its base *to the pound* | First-death scenarios were untestable; the knob keyed the cache but changed nothing |
 | `take_pcls`'s docstring claimed proceeds landed in cash "spent before anything else" | Tracing actual balances in a test run, not trusting the comment | Would have misled anyone reading the doc rather than the code; the code was already correct |
 | PCLS greedily claimed the whole Lump Sum Allowance before a same-day `PensionLumpSum` request got to it | A test asserting the two should share the allowance failed with PCLS taking the full £268,275 | An explicit request would have silently received none of the relief it asked for, if scheduled the same plan-year as automatic PCLS-at-access |
+| A household with no `ISA` `Asset` has nowhere for surplus, a PCLS, or Bed-and-ISA to shelter money — the GIA fallback is synthesised automatically, the ISA is not, and neither errors | The user asking "does this assume part of the income comes from the GIA/ISA?" of a PCLS-vs-UFPLS comparison | Understated PCLS's tax advantage by tens of thousands of pounds over 30+ years in that comparison; would silently do the same to any household built without an ISA `Asset` |
 
 The pattern: **every one was caught by looking at a number that seemed too
-good, or by rendering the output and reading it.** Neither is automatable.
+good, by rendering the output and reading it, or by someone asking why a
+number was built the way it was.** None of the three is automatable.
 
 ---
 

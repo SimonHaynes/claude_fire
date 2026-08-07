@@ -105,6 +105,15 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
    should sit at or near zero throughout. A visible, sustained balance in
    `result.asset_type_percentiles["cash"]` or a fan chart is a real finding to
    investigate, not a quirk to caption around.
+9. **A GIA that never drains into the ISA usually means there is no ISA to
+   drain into.** Bed-and-ISA should migrate a GIA balance into the ISA within
+   a few years of a lump sum or sustained surplus arriving. If
+   `result.asset_type_percentiles["gia"]` keeps growing for the life of the
+   plan while `["isa"]` stays flat or at zero, check whether the household
+   actually has an `ISA` `Asset` for that person before trusting the tax
+   figures — the engine synthesises a GIA automatically but never an ISA, so
+   a household intake without one has nowhere for the sweep to go, silently,
+   for the whole plan. See `uk-pension-tax-strategy`'s GIA section.
 
 ## When results look wrong
 
