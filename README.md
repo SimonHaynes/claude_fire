@@ -1,11 +1,74 @@
-# retireplan
+# claude_fire
 
-Cashflow modelling and Monte Carlo simulation for retirement planning, with
-pluggable withdrawal, drawdown and allocation strategies, and a seven-section
-client PDF report.
+*Financial Independence, Retire Early — modelled by an actual Monte Carlo
+engine, driven by talking to it.*
 
-Everything works in **real (today's money) terms**: every figure in and out is
-purchasing power, not future pounds.
+## Why this exists
+
+Retirement calculators mostly come in two flavours: a spreadsheet that
+assumes 7% a year forever and calls it a plan, or a black box that takes your
+numbers and hands back a probability with no way to ask why, or to see what
+changes if you retire six months later, skip a holiday, or the market falls
+the week you stop working.
+
+`claude_fire` is neither. It's a real cashflow and Monte Carlo engine —
+historical market returns back to 1928, UK income/NI/inheritance tax,
+per-person mortality, care costs — wired up to a set of [Claude
+Code](https://claude.com/claude-code) skills that turn a conversation about
+your finances into a running model of them.
+
+## An example
+
+You, in Claude Code, inside this repo:
+
+> I'm 52, my partner's 50. About £900k across pensions and ISAs, a paid-off
+> house worth £480k. We'd like to retire as soon as we can without wrecking
+> the numbers — when's that?
+
+Claude Code — using the skills in `.claude/skills/` — asks a few clarifying
+questions, turns your answers into a household definition, runs a handful of
+scenarios (retire now, in two years, in four — each 2,000 times against a
+different draw of market history) and comes back with something like:
+
+> Retiring now clears 55% of simulated outcomes — most of the failures come
+> from the first five years, before either pension unlocks. Waiting until
+> July 2030 clears 98%, and costs less in lifestyle than you'd think.
+
+And then it keeps going, because it's a conversation, not a form submission:
+
+> What if we downsize instead of waiting?
+> What if the market drops 30% the year we retire?
+> Show me what happens if we leave more to the kids and spend less ourselves.
+
+Each of those is a new scenario, run for real against thousands of simulated
+years — not guessed at, not interpolated from the first answer.
+
+## What it produces
+
+The end product is an eight-section PDF: current position, the scenarios
+tested and why, results, a detailed breakdown of the recommended plan, tax
+and estate recommendations, structuring, a timeline, and notes on every
+assumption made along the way. A few pages from the sample report, generated
+from the fabricated household in `workspace/sample_client/`:
+
+<p align="center"><img src="docs/scenarios.png" width="720" alt="Scenarios tested — three retirement dates explained in prose, plus how spending is modelled"></p>
+
+<p align="center"><img src="docs/results.png" width="720" alt="Results table — success probability dial, median spend, worst case, and net-to-heirs range for each scenario"></p>
+
+<p align="center"><img src="docs/fan-charts.png" width="720" alt="ISA balance fan chart, widening from £0 to a £26M 95th-percentile by the end of the plan"></p>
+
+Nobody's real numbers — see [Workspace](#workspace) to generate your own.
+
+## Requires Claude Code
+
+There's no server and no hosted app. `retireplan` (the `src/retireplan/`
+package) is a normal, dependency-free Python engine you can import and script
+directly — see the snippet below. But the point of this repo is
+`.claude/agents/` and `.claude/skills/`: instructions that teach Claude Code
+how to gather your numbers, design scenarios, run the engine, sanity-check
+the output against a fixed checklist, and write the report — so the actual
+interface to a fairly serious piece of financial modelling is just talking to
+it, in this repo, with Claude Code running.
 
 ```python
 from datetime import date
@@ -18,6 +81,9 @@ result = run_monte_carlo(
 )
 print(f"{result.success_probability:.1%} over {result.sample_years} years of history")
 ```
+
+Everything works in **real (today's money) terms**: every figure in and out
+is purchasing power, not future pounds.
 
 ## Install
 
@@ -37,6 +103,25 @@ into this repo** — see [Data](#data) below. Fetch it once before running
 cp .env.example .env               # add your own free FRED API key
 .venv/bin/python tools/fetch_market_data.py
 .venv/bin/python -m pytest
+```
+
+## Workspace
+
+Household definitions live outside the package, under `workspace/` — they
+are data about real people, not library code. `workspace/sample_client/` is
+a fabricated fixture used by the tests and this README; everything else
+under `workspace/` is gitignored, since real financial data should never be
+committed. With Claude Code running in this repo, just describe your
+situation and let the `intake-financial-data` skill do the rest, or set one
+up by hand the same way:
+
+```bash
+mkdir workspace/<name>
+touch workspace/<name>/__init__.py
+# write household.py, scenarios.py, run_scenarios.py, build_report.py
+# — workspace/sample_client/ is the pattern to copy.
+.venv/bin/python -m workspace.<name>.run_scenarios   # compare every scenario
+.venv/bin/python -m workspace.<name>.build_report    # PDF report
 ```
 
 ## Layout
@@ -161,23 +246,6 @@ automated. In outline:
 Damodaran and Yahoo Finance sources need no key. The fetched numbers should
 match the originals to within data-revision noise — the header each script
 writes documents the exact source and method, so a mismatch is diagnosable.
-
-## Workspace
-
-Household definitions live outside the package, under `workspace/` — they are
-data about real people, not library code. `workspace/sample_client/` is a
-fabricated fixture used by the tests and docs; everything else under
-`workspace/` is gitignored, since real financial data should never be
-committed. Set up your own the same way:
-
-```bash
-mkdir workspace/<name>
-touch workspace/<name>/__init__.py
-# write household.py, scenarios.py, run_scenarios.py, build_report.py
-# — workspace/sample_client/ is the pattern to copy.
-.venv/bin/python -m workspace.<name>.run_scenarios   # compare every scenario
-.venv/bin/python -m workspace.<name>.build_report    # PDF report
-```
 
 ## Mortality, survivorship and care
 
