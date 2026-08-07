@@ -407,9 +407,16 @@ class CashBondLadder(DrawdownStrategy):
     The reserve is seeded from ISAs at retirement and topped back up in years
     the market did not fall.
 
-    Whether this helps depends entirely on the plan: it protects a portfolio
-    that has enough and needs to keep it, and it quietly starves one that
-    needs growth to make it to a pension access date at all.
+    **Tested against a same-average-allocation rebalanced portfolio and it
+    lost — worse success probability, worse worst-decile outcome, both on
+    the classic historical worst-start years and a 2,000-trial Monte
+    Carlo.** See REVIEW.md 1.15 for the numbers and the mechanism: topping
+    the reserve back up to its *full* target on every qualifying year
+    over-extracts from equities in years that were merely okay, not just
+    genuinely strong ones. A plain `StaticMix`/`ByAssetTypeMix` at the same
+    average equity percentage is not just simpler than this — it tested
+    better. Do not reach for this strategy assuming it reduces sequence
+    risk; run the comparison for the household in front of you first.
     """
 
     target_years: float = 3.0
@@ -468,6 +475,21 @@ class ThreeBucketStrategy(DrawdownStrategy):
     spending (the sum of the two defaults) carved out of the growth
     portfolio up front, matching the canonical "stocks for everything beyond
     year 7" description of this strategy.
+
+    **Implemented faithfully from the published rules and tested -- it is
+    the worst of four strategies compared, not the best.** Same-average-
+    allocation rebalanced portfolio, `CashBondLadder`, this, and all-equity,
+    stress-tested on the classic historical worst-start years and a
+    2,000-trial Monte Carlo: this strategy had the *lowest* success
+    probability of the four (84.5%, against 92.2% for the rebalanced
+    comparison), worse even than `CashBondLadder`. See REVIEW.md 1.15. The
+    mechanism is the same over-extraction `CashBondLadder` shows, worse
+    here because the reserve is bigger (7 years vs 3) and Bucket 1's
+    unconditional annual refill from Bucket 2 adds a second drain with no
+    market-direction check at all. Building this "properly" from the
+    canonical description did not rescue the idea -- it sharpened the case
+    against it. Prefer a plain `StaticMix`/`ByAssetTypeMix` at a tested
+    equity percentage if the goal is genuinely reducing sequence risk.
     """
 
     cash_years: float = 2.0
