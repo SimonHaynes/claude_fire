@@ -23,7 +23,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (
@@ -53,12 +53,13 @@ from .model import (
     IncomeSource,
     IncomeType,
     Maturity,
+    PensionAccess,
     Person,
     Phase,
 )
 from .plan import Plan, PlanYear, compile_plan
 from .care import CareModel, CareNeed, CarePlan, ImmediateNeedsAnnuity, MeansTest
-from .scenario import Gift, OneOffSpend, Scenario
+from .scenario import Gift, OneOffSpend, PensionLumpSum, Scenario
 from .serde import dump_household, household_from_dict, household_to_dict, load_household
 from .simulation import SimulationResult, project_once, run_monte_carlo
 from .strategies import (
@@ -86,7 +87,7 @@ __all__ = [
     # model
     "Asset", "AssetType", "Assumptions", "Contribution", "Debt", "DefinedBenefit",
     "Expense", "ExpenseCategory", "FiscalDrag", "Frequency", "Goal", "Household",
-    "IncomeSource", "IncomeType", "Maturity", "Person", "Phase",
+    "IncomeSource", "IncomeType", "Maturity", "PensionAccess", "Person", "Phase",
     # market
     "BlockBootstrap", "Blend", "FixedNominal", "FixedReal", "HeldToMaturityCredit",
     "MarketData", "ReturnModel", "SampledSeries",
@@ -94,7 +95,7 @@ __all__ = [
     "FixedAge", "LifeTable", "MortalityModel",
     # engine
     "Plan", "PlanYear", "compile_plan", "Projection", "YearResult", "project",
-    "Scenario", "OneOffSpend", "Gift",
+    "Scenario", "OneOffSpend", "Gift", "PensionLumpSum",
     # care
     "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest", "SimulationResult", "run_monte_carlo", "project_once",
     # strategies

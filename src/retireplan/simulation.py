@@ -248,9 +248,10 @@ def cache_key(
             "spending_multiplier": scenario.spending_multiplier,
             "one_off_spends": [asdict(s) for s in scenario.one_off_spends],
             "gifts": [asdict(g) for g in scenario.gifts],
+            "pension_lump_sums": [asdict(p) for p in scenario.pension_lump_sums],
             "gift_growth_rate": gift_growth_rate,
             "market_stress": [dict(m) for m in scenario.market_stress],
-            "take_pcls": scenario.take_pcls,
+            "pension_access": scenario.pension_access.value,
             # This block is hand-written, so a new scenario field that changes
             # an answer and is not added here does not error -- it silently
             # returns another scenario's cached result.

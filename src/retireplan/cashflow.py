@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from .market import YearReturns
+from .model import PensionAccess
 from .plan import Plan, PlanYear, SlotMaps
 from .portfolio import Portfolio
 from .strategies import DrawdownContext, WithdrawalContext, credit_isa, isa_recipients
@@ -45,6 +46,10 @@ class YearResult:
     dividend_tax_paid: float
     cgt_paid: float
     pcls_taken: float
+    """The one-off lump sum taken at first pension access, under
+    `PensionAccess.PCLS`. Zero under `NONE` or `UFPLS` -- UFPLS's tax-free
+    cash is reported year by year in `ufpls_tax_free_taken` instead, since
+    it has no single crystallisation event to attribute it to."""
     net_cashflow: float
     """Income minus spending *before* any drawdown: negative means the
     portfolio had to make up the difference."""
@@ -62,6 +67,14 @@ class YearResult:
     left without essential care for lack of money, so this is a real outcome
     rather than a plan failure -- but it means the capital is gone, which is
     why it is reported rather than absorbed silently."""
+    ufpls_tax_free_taken: float = 0.0
+    """Tax-free cash generated this year by UFPLS withdrawals -- the 25%
+    portion of every payment, until the Lump Sum Allowance runs out. See
+    `pcls_taken` for the equivalent under `PensionAccess.PCLS`."""
+    pension_lump_sum_taken: float = 0.0
+    """Gross amount taken this year via `Scenario.pension_lump_sums` -- a
+    one-off, dated, partial-crystallisation-style withdrawal, independent
+    of the scenario's ongoing `pension_access` mode."""
 
 
     @property
@@ -346,7 +359,16 @@ def project(
     second_death = max(deaths.values()) if deaths else plan.n_years
 
     portfolio = Portfolio(list(plan.opening_balances))
-    pcls_taken: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
+    # Lifetime tracker, not reset per year: the Lump Sum Allowance is a
+    # lifetime limit, and PCLS, UFPLS and a one-off `PensionLumpSum` all
+    # draw against the same one per person.
+    tax_free_cash_taken: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
+    # Separate from the above: PCLS is a one-off event, gated on whether it
+    # has *itself* already fired for this person, not on whether the
+    # allowance has any use against it yet -- a `PensionLumpSum` taken
+    # before access begins would otherwise be mistaken for "PCLS already
+    # happened" and silently suppress it.
+    pcls_fired: set[str] = set()
     results: list[YearResult] = []
 
     for base_year in plan.years:
@@ -411,21 +433,61 @@ def project(
         for person, lump in year.lump_sums_by_person.items():
             _invest_for_person(lump, person, portfolio, plan, slots, tax, isa_headroom_used)
 
+        # --- one-off, dated partial-crystallisation lump sums -----------
+        # Independent of `pension_access`: "I want £50,000 of cash now"
+        # without committing to crystallise the whole pot, or on top of an
+        # ongoing UFPLS/PCLS mode. Split 25%/75% like a UFPLS payment,
+        # sharing the same lifetime Lump Sum Allowance counter. Resolved
+        # before any automatic PCLS-at-access event below, so an explicit
+        # request is honoured in full rather than finding the allowance
+        # already claimed by PCLS greedily taking the maximum available the
+        # moment access begins, if both land in the same plan-year.
+        lump_sum_this_year = 0.0
+        for request in scenario.pension_lump_sums:
+            if not (year.start <= request.on < year.end):
+                continue
+            dc = slots.dc_slots_by_person.get(request.person, ())
+            if not dc or not _dc_accessible(year, slots, request.person):
+                continue
+            available = portfolio.sum_of(dc)
+            if available <= 0:
+                continue
+            gross = min(request.amount, available)
+            used = tax_free_cash_taken.get(request.person, 0.0)
+            tax_free, taxable = tax.ufpls_split(gross, used)
+            tax_free_cash_taken[request.person] = used + tax_free
+            portfolio.draw_pro_rata(dc, gross)
+            already = year.taxable_income_by_person.get(request.person, 0.0)
+            tax_before = tax.income_tax(already)
+            net = tax_free + taxable - (tax.income_tax(already + taxable) - tax_before)
+            _invest_for_person(net, request.person, portfolio, plan, slots, tax, isa_headroom_used)
+            lump_sum_this_year += gross
+            # The taxable portion has to reach the year's real tax bill, or
+            # this would be a lump sum with no tax on 75% of it.
+            year = dataclasses.replace(
+                year,
+                taxable_other_by_person={
+                    **year.taxable_other_by_person,
+                    request.person: year.taxable_other_by_person.get(request.person, 0.0) + taxable,
+                },
+            )
+
         # --- tax-free lump sum, once per person at pension access ------
         pcls_this_year = 0.0
-        if scenario.take_pcls:
+        if scenario.pension_access is PensionAccess.PCLS:
             for person, dc in slots.dc_slots_by_person.items():
                 if not _dc_accessible(year, slots, person):
                     continue
-                if pcls_taken.get(person, 0.0) > 0 or not dc:
+                if person in pcls_fired or not dc:
                     continue
                 pot = portfolio.sum_of(dc)
-                lump = tax.pcls_available(pot, pcls_taken.get(person, 0.0))
+                lump = tax.pcls_available(pot, tax_free_cash_taken.get(person, 0.0))
+                pcls_fired.add(person)
                 if lump <= 0:
                     continue
                 portfolio.draw_pro_rata(dc, lump)
                 _invest_for_person(lump, person, portfolio, plan, slots, tax, isa_headroom_used)
-                pcls_taken[person] = lump
+                tax_free_cash_taken[person] = tax_free_cash_taken.get(person, 0.0) + lump
                 pcls_this_year += lump
 
         # --- income and tax before any drawdown ------------------------
@@ -469,6 +531,8 @@ def project(
             essential_spend=year.essential,
             growth_return=growth_return,
             isa_headroom_used=isa_headroom_used,
+            pension_access=scenario.pension_access,
+            tax_free_cash_used=tax_free_cash_taken,
         )
 
         def shortfall_for(discretionary: float) -> float:
@@ -548,6 +612,8 @@ def project(
                 care_cost=care_cost,
                 care_state_funded=care_state_funded,
                 pcls_taken=pcls_this_year,
+                ufpls_tax_free_taken=draw.ufpls_tax_free if draw else 0.0,
+                pension_lump_sum_taken=lump_sum_this_year,
                 net_cashflow=net_cashflow,
                 unmet_shortfall=draw.unmet if draw else 0.0,
                 balances=dict(zip(plan.slot_names, portfolio.balances)),

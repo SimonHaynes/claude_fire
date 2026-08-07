@@ -250,13 +250,34 @@ not caught by this; paying it into a pension is.
 PCLS landing in cash in a trace or a fan chart is a regression, not a
 modelling choice to explain away.
 
-**UFPLS itself is not modelled.** `Scenario.take_pcls` only represents
-PCLS + drawdown — there is no mechanism for a withdrawal with a fixed 25/75
-tax-free/taxable split and its own immediate MPAA trigger. This doesn't
-matter for the above-LSA or still-contributing cases above, where PCLS +
-drawdown is the right answer anyway — but for a below-LSA household that has
-stopped contributing, where UFPLS is genuinely the better strategy, the
-engine cannot represent it. See REVIEW.md 1.14.
+**Set `Scenario.pension_access` to choose the mechanism.** `PensionAccess.NONE`
+(the default) is fully taxable, no lump sum, ever. `PensionAccess.PCLS`
+crystallises and takes the maximum tax-free lump sum the moment access
+begins, same as before. `PensionAccess.UFPLS` splits every ongoing
+withdrawal from the pension 25% tax-free / 75% taxable automatically —
+solved exactly against the actual tax bands, not approximated — and shares
+one lifetime tax-free-cash counter with PCLS, so the two compose correctly
+if a household somehow uses both. **This is the field to set to model the
+below-LSA, no-longer-contributing case above** — pick `UFPLS` rather than
+leaving `pension_access` at `NONE` and hand-approximating it.
+
+**For a specific one-off amount — "I want £50,000 of cash now" — without
+committing to either ongoing mode, use `Scenario.pension_lump_sums`.** A
+dated `PensionLumpSum(on, person, amount)`, also split 25%/75%, drawing
+against the same lifetime allowance as PCLS/UFPLS. This is the practical
+form of "partial crystallisation": the engine doesn't track a separate
+crystallised-vs-uncrystallised ledger, so there is nothing to partially
+commit to — only how much of the pot's *future* tax-free entitlement a
+withdrawal today uses up. If a `PensionLumpSum` and an automatic
+PCLS-at-access event land in the same plan-year, the explicit request is
+honoured first, then PCLS takes whatever allowance is left — not the other
+way round, which would silently starve a deliberate request of the relief
+it asked for.
+
+**Neither mode enforces the MPAA itself.** The engine doesn't cap
+contributions after a taxable withdrawal under any mode — say so explicitly
+if a household intends to keep contributing after triggering it, since the
+plan will otherwise overstate how much further relief remains available.
 
 ## Estate planning beyond drawdown
 

@@ -264,6 +264,59 @@ class UKTaxSystem:
         headroom = max(0.0, self.lump_sum_allowance - already_taken)
         return max(0.0, min(pension_value * self.pcls_fraction, headroom))
 
+    def ufpls_gross_for_net(
+        self, other_taxable_income: float, tax_free_used: float, target_net: float
+    ) -> float:
+        """Gross UFPLS withdrawal needed to net `target_net`.
+
+        25% of it is tax-free, up to whatever Lump Sum Allowance headroom
+        `tax_free_used` has left; the rest is taxed as ordinary income on
+        top of `other_taxable_income`. Once the allowance is exhausted this
+        degrades to `gross_pension_withdrawal_for_net` automatically -- see
+        `RateSchedule.gross_for_net_partly_relieved`.
+        """
+        headroom = max(0.0, self.lump_sum_allowance - tax_free_used)
+        return self.income_tax_schedule.gross_for_net_partly_relieved(
+            other_taxable_income, self.pcls_fraction, headroom, target_net,
+        )
+
+    def ufpls_gross_for_taxable(self, tax_free_used: float, target_taxable: float) -> float:
+        """Gross UFPLS withdrawal that produces exactly `target_taxable` of
+        taxable income, given `tax_free_used` of the Lump Sum Allowance
+        already used.
+
+        For capping a withdrawal at a taxable-income ceiling -- a tax band
+        to fill up to, in `TaxEfficientOrder` -- rather than a net-income
+        target. Closed form, not a band-walk: taxable income is a simple
+        piecewise-linear function of gross here (25% relief until the
+        allowance runs out, then none), so no search is needed.
+        """
+        if target_taxable <= 0:
+            return 0.0
+        headroom = max(0.0, self.lump_sum_allowance - tax_free_used)
+        taxable_fraction = 1.0 - self.pcls_fraction
+        phase_1_taxable_capacity = (
+            headroom / self.pcls_fraction * taxable_fraction if self.pcls_fraction > 0 else 0.0
+        )
+        if target_taxable <= phase_1_taxable_capacity:
+            return target_taxable / taxable_fraction if taxable_fraction > 0 else INF
+        phase_1_gross = (
+            phase_1_taxable_capacity / taxable_fraction if taxable_fraction > 0 else 0.0
+        )
+        return phase_1_gross + (target_taxable - phase_1_taxable_capacity)
+
+    def ufpls_split(self, gross: float, tax_free_used: float) -> tuple[float, float]:
+        """Split a gross UFPLS withdrawal into (tax_free, taxable).
+
+        Call this on whatever gross amount was *actually* drawn (after
+        capping to what the pot holds) -- `ufpls_gross_for_net`'s result is
+        only a target to aim for, not the guaranteed real split, since the
+        pot might not hold enough to reach it.
+        """
+        headroom = max(0.0, self.lump_sum_allowance - tax_free_used)
+        tax_free = max(0.0, min(gross * self.pcls_fraction, headroom))
+        return tax_free, gross - tax_free
+
     def state_pension(self, full_record: bool = True) -> float:
         if not full_record:
             raise NotImplementedError(

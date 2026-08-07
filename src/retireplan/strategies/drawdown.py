@@ -9,6 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from ..model import PensionAccess
 from ..portfolio import Portfolio
 from ..tax import TaxSystem
 
@@ -42,6 +43,21 @@ class DrawdownContext:
     real £20,000 annual limit cannot be credited to twice over by two
     mechanisms that would otherwise each assume the full amount was free."""
 
+    pension_access: PensionAccess = PensionAccess.NONE
+    """Whether ordinary drawdown from an accessible DC pension is fully
+    taxable (`NONE`, `PCLS` -- PCLS itself is handled once, at access, in
+    `cashflow.py`; anything drawn afterwards from either mode is fully
+    taxable) or UFPLS -- automatically 25%/75% split, here in the drawdown
+    strategies themselves, since UFPLS has no separate crystallisation
+    event to handle it at."""
+
+    tax_free_cash_used: dict[str, float] = field(default_factory=dict)
+    """Mutable, shared for the *whole plan* (not reset per year, unlike
+    `isa_headroom_used`) -- the Lump Sum Allowance is a lifetime limit.
+    Updated by a PCLS event in `cashflow.py` and by any UFPLS withdrawal
+    here, so the two share one real cap regardless of which mode a
+    household actually uses."""
+
 
 @dataclass
 class DrawResult:
@@ -50,6 +66,55 @@ class DrawResult:
     gia_withdrawn: float = 0.0
     cgt_paid: float = 0.0
     dc_withdrawn_gross: float = 0.0
+    ufpls_tax_free: float = 0.0
+    """Tax-free portion of any UFPLS withdrawal made resolving this need.
+    Zero under `PensionAccess.NONE` or `PCLS`, where a DC withdrawal made
+    here is always fully taxable -- PCLS's own tax-free lump sum is a
+    separate, one-off event handled in `cashflow.py`, not part of this."""
+
+
+def _draw_dc_pension(
+    person: str, slots: tuple[int, ...], need: float,
+    portfolio: Portfolio, taxable_income: dict[str, float], ctx: DrawdownContext,
+    result: DrawResult, *, taxable_cap: float | None = None,
+) -> float:
+    """Draw from one person's DC pension to net `need`, taxed according to
+    `ctx.pension_access`. Returns net gained; mutates `portfolio`,
+    `taxable_income`, `result` and `ctx.tax_free_cash_used` in place.
+
+    `taxable_cap`, if given, additionally bounds how much *taxable* income
+    this draw may add (a tax-band ceiling, e.g. `TaxEfficientOrder.fill_to`)
+    -- distinct from `need`, which bounds net income, because under UFPLS
+    the two are not proportional to gross in the same way once the tax-free
+    relief runs out.
+    """
+    available = portfolio.sum_of(slots)
+    if available <= 0 or need <= 0:
+        return 0.0
+    already = taxable_income.get(person, 0.0)
+    tax_before = ctx.tax.income_tax(already)
+
+    if ctx.pension_access is PensionAccess.UFPLS:
+        used = ctx.tax_free_cash_used.get(person, 0.0)
+        wanted_gross = ctx.tax.ufpls_gross_for_net(already, used, need)
+        gross = min(wanted_gross, available)
+        if taxable_cap is not None:
+            gross = min(gross, ctx.tax.ufpls_gross_for_taxable(used, taxable_cap))
+        tax_free, taxable = ctx.tax.ufpls_split(gross, used)
+        ctx.tax_free_cash_used[person] = used + tax_free
+        result.ufpls_tax_free += tax_free
+    else:
+        wanted_gross = ctx.tax.gross_pension_withdrawal_for_net(already, need)
+        gross = min(wanted_gross, available)
+        if taxable_cap is not None:
+            gross = min(gross, taxable_cap)
+        tax_free, taxable = 0.0, gross
+
+    net_gained = tax_free + taxable - (ctx.tax.income_tax(already + taxable) - tax_before)
+    portfolio.draw_pro_rata(slots, gross)
+    taxable_income[person] = already + taxable
+    result.dc_withdrawn_gross += gross
+    return net_gained
 
 
 def isa_recipients(person: str, isa_slots_by_person: dict[str, tuple[int, ...]]) -> list[str]:
@@ -179,18 +244,7 @@ def _draw_isa_gia_then_pensions(
                 break
             if not ctx.dc_accessible_by_person.get(person, False):
                 continue  # below the Normal Minimum Pension Age
-            available = portfolio.sum_of(slots)
-            if available <= 0:
-                continue
-            already = taxable_income.get(person, 0.0)
-            wanted_gross = ctx.tax.gross_pension_withdrawal_for_net(already, need)
-            gross = min(wanted_gross, available)
-            tax_before = ctx.tax.income_tax(already)
-            net_gained = gross - (ctx.tax.income_tax(already + gross) - tax_before)
-            portfolio.draw_pro_rata(slots, gross)
-            taxable_income[person] = already + gross
-            result.dc_withdrawn_gross += gross
-            need -= net_gained
+            need -= _draw_dc_pension(person, slots, need, portfolio, taxable_income, ctx, result)
 
     # Anything under a penny is arithmetic residue, not a funding gap.
     #
@@ -281,17 +335,10 @@ class TaxEfficientOrder(DrawdownStrategy):
             headroom = self.fill_to - already
             if headroom <= 0:
                 continue
-            available = portfolio.sum_of(slots)
-            if available <= 0:
-                continue
-            wanted = ctx.tax.gross_pension_withdrawal_for_net(already, need)
-            gross = min(wanted, headroom, available)
-            tax_before = ctx.tax.income_tax(already)
-            net_gained = gross - (ctx.tax.income_tax(already + gross) - tax_before)
-            portfolio.draw_pro_rata(slots, gross)
-            taxable_income[person] = already + gross
-            result.dc_withdrawn_gross += gross
-            need -= net_gained
+            need -= _draw_dc_pension(
+                person, slots, need, portfolio, taxable_income, ctx, result,
+                taxable_cap=headroom,
+            )
 
         # Whatever is left comes from the ISA, then from the pension at
         # whatever rate it takes — a shortfall is worse than a tax bill.
@@ -301,6 +348,11 @@ class TaxEfficientOrder(DrawdownStrategy):
     def end_of_year(self, portfolio, taxable_income, ctx):
         if not (self.recycle_surplus and ctx.is_retired):
             return
+        # Thrown away, not merged into the year's real DrawResult: recycling
+        # withdrawals were never surfaced in dc_withdrawn_gross even before
+        # UFPLS existed -- this preserves that, rather than quietly starting
+        # to report a number nothing previously accounted for.
+        result = DrawResult()
         for person, slots in ctx.dc_slots_by_person.items():
             if not ctx.dc_accessible_by_person.get(person, False):
                 continue
@@ -318,14 +370,16 @@ class TaxEfficientOrder(DrawdownStrategy):
                 if ctx.isa_slots_by_person.get(recipient)
             )
             headroom = min(self.fill_to - already, total_isa_headroom)
-            available = portfolio.sum_of(slots)
-            if headroom <= 0 or available <= 0:
+            if headroom <= 0 or portfolio.sum_of(slots) <= 0:
                 continue
-            gross = min(headroom, available)
-            tax_before = ctx.tax.income_tax(already)
-            net = gross - (ctx.tax.income_tax(already + gross) - tax_before)
-            portfolio.draw_pro_rata(slots, gross)
-            taxable_income[person] = already + gross
+            # `need=headroom` is a deliberately generous stand-in: there is
+            # no net-income target here, only a gross/taxable ceiling, and
+            # net is never more than gross, so it never binds ahead of
+            # `taxable_cap` -- the cap below is what actually limits this.
+            net = _draw_dc_pension(
+                person, slots, headroom, portfolio, taxable_income, ctx, result,
+                taxable_cap=headroom,
+            )
             # Same IHT treatment, no income tax for the heirs, wherever it
             # lands -- person's own ISA first, a spouse's if that's full.
             credit_isa(net, person, ctx.isa_slots_by_person, ctx.tax, portfolio, ctx.isa_headroom_used)

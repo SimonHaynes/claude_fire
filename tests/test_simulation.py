@@ -17,6 +17,7 @@ from retireplan import (
     GuytonKlinger,
     Household,
     MarketData,
+    PensionAccess,
     Person,
     SampledSeries,
     Scenario,
@@ -315,17 +316,18 @@ class TestCaching:
         args = (UK, AS_OF, 100, 5, 1, volatile_market)
         assert cache_key(household, base, *args) != cache_key(household, changed, *args)
 
-    def test_key_changes_with_take_pcls(self, household, volatile_market):
-        """`take_pcls` changes what `cashflow.py` actually does (a real lump
-        sum leaves the pension) but was missing from the cache-key payload —
-        two scenarios differing only in this flag silently shared one cached
-        result. Caught while comparing PCLS on/off for a real client."""
+    def test_key_changes_with_pension_access(self, household, volatile_market):
+        """`pension_access` changes what `cashflow.py` actually does (a real
+        lump sum leaves the pension, or every withdrawal is split 25/75) but
+        was missing from the cache-key payload — two scenarios differing
+        only in this flag silently shared one cached result. Caught while
+        comparing PCLS on/off for a real client."""
         from retireplan.tax.uk import UK
 
         off = Scenario("s", retirement_dates={"A": AS_OF},
-                       withdrawal=GuytonKlinger(), take_pcls=False)
+                       withdrawal=GuytonKlinger(), pension_access=PensionAccess.NONE)
         on = Scenario("s", retirement_dates={"A": AS_OF},
-                      withdrawal=GuytonKlinger(), take_pcls=True)
+                      withdrawal=GuytonKlinger(), pension_access=PensionAccess.PCLS)
         args = (UK, AS_OF, 100, 5, 1, volatile_market)
         assert cache_key(household, off, *args) != cache_key(household, on, *args)
 
