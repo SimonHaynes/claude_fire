@@ -78,6 +78,12 @@ class WithdrawalContext:
     portfolio_value: float
     growth_return: float
     oldest_age: int
+    years_remaining: int
+    """Years until the household's last projected death -- a proxy for the
+    remaining distribution period, the quantity Guyton-Klinger's final-years
+    rule actually keys off. Tracks whichever alive-set variant this year
+    belongs to, so a first death shortens it exactly when the plan's own
+    schedule says it should."""
     shortfall_for: Callable[[float], float]
 
 
@@ -135,7 +141,13 @@ class GuytonKlinger(WithdrawalStrategy):
     Implemented:
       * Capital preservation — if the rate rises more than `guardrail` above
         the rate set in the first year of retirement, cut spending by
-        `adjustment`.
+        `adjustment`. Suspended in the final `final_years` of the household's
+        projected retirement (the canonical rule, not an adaptation): a cut
+        this late defends an estate the retiree will not live to need, at the
+        cost of the quality of life left, and Guyton's own finding was that
+        continuing to cut barely changes failure rates while needlessly
+        depressing spending. The prosperity rule below is not suspended —
+        there is no equivalent argument against a raise near the end.
       * Prosperity — if it falls more than `guardrail` below, raise spending
         by `adjustment`, but never immediately after a down year (a
         simplification of the original's inflation/freeze rule).
@@ -150,6 +162,10 @@ class GuytonKlinger(WithdrawalStrategy):
     adjustment: float = 0.10
     floor: float = 0.5
     ceiling: float = 1.5
+    final_years: int = 15
+    """How close to the household's last projected death "the final years"
+    means. 15 is Guyton's own figure, not a tuned default -- change it only
+    to model a household's plan running to a materially different horizon."""
 
     initial_rate: float | None = field(default=None, init=False, repr=False)
     multiplier: float = field(default=1.0, init=False, repr=False)
@@ -169,7 +185,10 @@ class GuytonKlinger(WithdrawalStrategy):
         if self.initial_rate is None:
             # A zero baseline would make every later year look infinitely worse.
             self.initial_rate = max(rate, 1e-6)
-        elif rate > self.initial_rate * (1 + self.guardrail):
+        elif (
+            rate > self.initial_rate * (1 + self.guardrail)
+            and ctx.years_remaining > self.final_years
+        ):
             self.multiplier = max(self.floor, self.multiplier * (1 - self.adjustment))
         elif rate < self.initial_rate * (1 - self.guardrail) and ctx.growth_return >= 0:
             self.multiplier = min(self.ceiling, self.multiplier * (1 + self.adjustment))

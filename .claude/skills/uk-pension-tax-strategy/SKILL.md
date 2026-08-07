@@ -295,6 +295,20 @@ contributions after a taxable withdrawal under any mode — say so explicitly
 if a household intends to keep contributing after triggering it, since the
 plan will otherwise overstate how much further relief remains available.
 
+**A fourth option, orthogonal to the three above: annuitise part of the pot
+instead of drawing it down.** `Scenario.income_annuity = IncomeAnnuity(enabled=True,
+fraction_of_pot=...)` buys a lifetime annuity once, at first access, from
+whatever's left of the pot after any automatic PCLS — converting that
+fraction into guaranteed income for the rest of that person's life, taxed as
+ordinary pension income throughout (no special tax-free routing, unlike
+`ImmediateNeedsAnnuity`, whose fees go tax-free direct to a care provider).
+Single-life: nothing passes to the estate, and payments stop outright at
+that person's own death regardless of a surviving spouse. This is the
+Bodie/Pfau safety-first case for a household anxious about *running out*
+rather than about maximising what's left — the trade-off worth stating
+plainly is the mirror image of drawdown flexibility: money committed to an
+annuity cannot be redirected later, however markets or circumstances change.
+
 ## Estate planning beyond drawdown
 
 - **The residence nil-rate band is probably already gone.** It tapers away

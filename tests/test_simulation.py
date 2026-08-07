@@ -331,6 +331,16 @@ class TestCaching:
         args = (UK, AS_OF, 100, 5, 1, volatile_market)
         assert cache_key(household, off, *args) != cache_key(household, on, *args)
 
+    def test_key_changes_with_income_annuity(self, household, volatile_market):
+        from retireplan import IncomeAnnuity
+        from retireplan.tax.uk import UK
+
+        off = Scenario("s", retirement_dates={"A": AS_OF}, withdrawal=GuytonKlinger())
+        on = Scenario("s", retirement_dates={"A": AS_OF}, withdrawal=GuytonKlinger(),
+                      income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=0.3))
+        args = (UK, AS_OF, 100, 5, 1, volatile_market)
+        assert cache_key(household, off, *args) != cache_key(household, on, *args)
+
     def test_key_is_stable_across_calls(self, household, scenario, volatile_market):
         """A key that drifts between identical calls silently disables the cache."""
         from retireplan.tax.uk import UK

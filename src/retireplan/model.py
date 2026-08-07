@@ -172,6 +172,18 @@ class Contribution:
 
     employee_monthly: float = 0.0
     employer_monthly: float = 0.0
+    start: date | None = None
+    end: date | None = None
+    """Bounds the contribution's own active window, independent of the
+    linked salary `IncomeSource`'s -- `None` means "the whole time the
+    salary is active" (the original behaviour, and still correct for anyone
+    who contributes at a flat rate for their whole working life).
+
+    Set `end` to model Coast FIRE precisely: contribute until a date, then
+    stop, while the salary -- and its tax and NI -- carries on unaffected.
+    Bounded by the salary's own window either way: a `Contribution.end`
+    after the salary stops (or after retirement, if it `stops_at_retirement`)
+    has no further effect once the salary itself is gone."""
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ any withdrawal rule works with any drawdown order and any allocation. Testing
 one at a time is how you find out which of them is doing the work — and, just
 as often, which one is doing nothing.
 """
-from .allocation import AllocationStrategy, ByAssetTypeMix, GlidePath, StaticMix
+from .allocation import AllocationStrategy, BondTent, ByAssetTypeMix, GlidePath, StaticMix
 from .drawdown import (
     CashBondLadder,
     DrawdownContext,
@@ -33,6 +33,7 @@ from .withdrawal import (
 
 __all__ = [
     "AllocationStrategy",
+    "BondTent",
     "ByAssetTypeMix",
     "CashBondLadder",
     "DrawResult",

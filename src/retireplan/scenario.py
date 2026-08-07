@@ -80,6 +80,90 @@ class PensionLumpSum:
     description: str = ""
 
 
+@dataclass(frozen=True)
+class IncomeAnnuity:
+    """A lifetime annuity bought from a DC pension at retirement -- the
+    "floor" half of Zvi Bodie / Wade Pfau's floor-and-upside (safety-first)
+    approach to retirement income: secure essential spending with guaranteed
+    income first, then invest whatever remains for upside.
+
+    Distinct from `care.ImmediateNeedsAnnuity`, which is a short, impaired-life
+    annuity bought at the point of entering care and paid tax-free direct to
+    the care provider. This is an ordinary lifetime annuity bought at a normal
+    (unimpaired) life expectancy, and its income is taxed exactly like any
+    other pension income, because that is what it is under UK rules.
+
+    Single-life, bought once at first pension access: payments stop outright
+    when the annuitant dies, with nothing passed to the estate -- annuitised
+    money is gone in exchange for the income stream, which is the actual
+    trade-off it protects against (running out of money) as much as it is a
+    cost (nothing left to leave). No joint-life or guarantee-period option is
+    modelled; a household that specifically wants the lower income a
+    joint-life or guaranteed annuity would buy needs a different figure
+    supplied by hand.
+
+    Bought from whatever remains of the pot *after* any `PensionAccess.PCLS`
+    tax-free cash has already been taken (if the scenario uses PCLS) -- the
+    common real-world order of "take the tax-free cash, then annuitise part
+    of what's left" -- so `fraction_of_pot` applies to the pot as it stands
+    at the point this fires, not to the pot's original, pre-PCLS size.
+
+    Pricing is a planning approximation, same style and same reason as
+    `ImmediateNeedsAnnuity`: a real quote is medically underwritten and this
+    model has no way to know an individual's health, and it is not discounted
+    for the insurer's own investment return on the premium, which is
+    conservative for the buyer -- a real insurer prices in that return, so a
+    real quote would buy more income than this estimates.
+    """
+
+    enabled: bool = False
+    fraction_of_pot: float = 0.0
+    """Fraction of the DC pot to annuitise at first access. The rest stays
+    invested for upside -- annuitise only what is needed to cover the floor,
+    not the whole pot, or there is no upside left to invest."""
+
+    life_expectancy_years: float = 25.0
+    """Flat planning figure, deliberately independent of the household's own
+    mortality model (`FixedAge`/`LifeTable`) so an annuity comparison is not
+    silently coupled to whichever assumption the rest of the plan happens to
+    use -- state a specific figure on purpose, the same way
+    `ImmediateNeedsAnnuity` does."""
+
+    loading: float = 1.15
+    """Insurer's margin over a break-even price. Lower than
+    `ImmediateNeedsAnnuity`'s default 1.25: that annuity prices a short,
+    impaired-life risk with wide uncertainty, where insurers charge more for
+    that uncertainty; this one prices a long, unimpaired life, a market
+    insurers compete harder on."""
+
+    escalation: float = 0.0
+    """Annual real escalation of the income once in payment. Zero buys a
+    level (flat real) annuity -- the common choice, since an escalating
+    annuity starts markedly lower for the same premium."""
+
+    def annual_benefit(self, premium: float) -> float:
+        """Annual income `premium` buys -- the inverse of
+        `ImmediateNeedsAnnuity.premium`: given the money, what income does it
+        secure, rather than given the income, what money does it cost."""
+        years = self.life_expectancy_years
+        if years <= 0:
+            return 0.0
+        if self.escalation:
+            factor = sum((1 + self.escalation) ** t for t in range(int(years) + 1))
+        else:
+            factor = years
+        return premium / (factor * self.loading)
+
+    def spec(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "fraction_of_pot": self.fraction_of_pot,
+            "life_expectancy_years": self.life_expectancy_years,
+            "loading": self.loading,
+            "escalation": self.escalation,
+        }
+
+
 @dataclass
 class Scenario:
     name: str
@@ -89,6 +173,9 @@ class Scenario:
     one_off_spends: tuple[OneOffSpend, ...] = ()
     gifts: tuple[Gift, ...] = ()
     pension_lump_sums: tuple[PensionLumpSum, ...] = ()
+    income_annuity: IncomeAnnuity | None = None
+    """A floor-and-upside lifetime annuity, bought once from each accessible
+    DC pension at first access. Off by default -- see `IncomeAnnuity`."""
 
     withdrawal: WithdrawalStrategy | None = None
     """None spends the plan as written and lets shortfalls fall where they may

@@ -14,6 +14,7 @@ from retireplan import (
     FixedReal,
     Frequency,
     Household,
+    IncomeAnnuity,
     PensionAccess,
     PensionLumpSum,
     PercentOfPortfolio,
@@ -210,6 +211,51 @@ class TestPensionLumpSum:
         assert first.pcls_taken == pytest.approx(remaining_pcls_headroom, abs=1.0)
 
 
+class TestIncomeAnnuity:
+    def test_not_bought_unless_enabled(self):
+        projection = run(retired_household(),
+                         Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal()))
+        assert all(y.income_annuity_premium == 0 for y in projection.years)
+        assert all(y.income_annuity_income == 0 for y in projection.years)
+
+    def test_bought_once_and_pays_a_level_income(self):
+        household = retired_household(pension=400_000, isa=0.0, spend=1_000)
+        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=0.5, life_expectancy_years=20, loading=1.15)
+        scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
+                            income_annuity=annuity)
+        projection = run(household, scenario)
+        first, second = projection.years[0], projection.years[1]
+        expected_premium = 200_000.0
+        expected_benefit = expected_premium / (20 * 1.15)
+        assert first.income_annuity_premium == pytest.approx(expected_premium)
+        assert first.income_annuity_income == pytest.approx(expected_benefit, rel=1e-6)
+        # A one-off event: the second year draws no further premium, but the
+        # income -- once secured -- keeps paying.
+        assert second.income_annuity_premium == 0.0
+        assert second.income_annuity_income == pytest.approx(expected_benefit, rel=1e-6)
+        assert first.balances["Pension"] == pytest.approx(200_000.0, abs=1.0)
+
+    def test_income_is_taxed_and_stops_at_death(self):
+        """Folded into ordinary taxable income (unlike a care annuity's
+        fees, which are paid tax-free direct to the provider), and single-life:
+        it stops outright when the annuitant dies, even though the household
+        -- and the plan -- continues."""
+        household = Household(
+            people=[Person("Alex", date(1960, 1, 1)), Person("Sam", date(1962, 1, 1))],
+            expenses=[Expense("Living", 1_000.0, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[Asset("Pension", AssetType.DC_PENSION, "Alex", 400_000.0, returns=FixedReal(0.0))],
+            assumptions=Assumptions(life_expectancy_age=90, state_pension_age=99),
+        )
+        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=1.0, life_expectancy_years=20, loading=1.0)
+        scenario = Scenario("s", retirement_dates={"Alex": AS_OF, "Sam": AS_OF}, withdrawal=SpendNominal(),
+                            income_annuity=annuity, death_ages={"Alex": 67})
+        projection = run(household, scenario)
+        assert projection.years[0].income_annuity_income == pytest.approx(20_000.0)
+        assert projection.years[0].tax_paid > 0
+        assert projection.years[2].income_annuity_income == 0.0
+        assert projection.years[2].alive == frozenset({"Sam"})
+
+
 class TestSpouseIsaSpillover:
     """A pound attributed to one person cannot literally land in someone
     else's ISA, but a real household achieves the same effect with an
@@ -374,7 +420,7 @@ def ctx(**overrides) -> WithdrawalContext:
     defaults = dict(year_index=0, is_retired=True, dc_accessible=True,
                     nominal_discretionary=20_000.0, fixed_spend=30_000.0,
                     net_income=10_000.0, portfolio_value=1_000_000.0,
-                    growth_return=0.05, oldest_age=65,
+                    growth_return=0.05, oldest_age=65, years_remaining=30,
                     shortfall_for=lambda a: max(0.0, a - affordable))
     defaults.update(overrides)
     return WithdrawalContext(**defaults)

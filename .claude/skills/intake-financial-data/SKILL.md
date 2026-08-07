@@ -60,6 +60,14 @@ after a fresh checkout as a problem to fix.
      re-stating if the plan sits unused for a while; don't compute a
      `last_payment` date yourself from a vague count, that just relocates
      the same staleness one step earlier.
+   - **A client who has already stopped, or plans to stop, contributing to a
+     pension while continuing to work is a fact for `Contribution.end`, not a
+     scenario decision.** This is the precise shape of Coast FIRE: contribute
+     until a date, then let the pot compound untouched while salary (and its
+     tax and NI) carries on to an independently-chosen retirement date.
+     `Contribution.start`/`end` default to `None` — active for exactly as
+     long as the linked salary `IncomeSource` is — so only set them when the
+     client states an actual date their contributions changed or will change.
 3. **Choose each asset's `ReturnModel` deliberately** — this is the decision
    most likely to flatter a plan:
    - `SampledSeries("global_equity")` — a tracker or equity fund.

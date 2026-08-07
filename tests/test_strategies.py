@@ -9,6 +9,7 @@ from retireplan import (
     Asset,
     AssetType,
     Assumptions,
+    BondTent,
     ByAssetTypeMix,
     CashBondLadder,
     Expense,
@@ -49,6 +50,7 @@ def context(**overrides) -> WithdrawalContext:
         portfolio_value=1_000_000.0,
         growth_return=0.05,
         oldest_age=65,
+        years_remaining=30,
         shortfall_for=lambda amount: max(0.0, amount - affordable_up_to),
     )
     defaults.update(overrides)
@@ -66,6 +68,23 @@ class TestWithdrawalStrategies:
         before = strategy.multiplier
         strategy.decide(context(portfolio_value=300_000))     # same spend, far smaller pot
         assert strategy.multiplier < before
+
+    def test_guyton_klinger_suspends_the_cut_in_the_final_years(self):
+        """The canonical rule: capital-preservation cuts stop in the last 15
+        years of the plan, since a cut this late defends an estate the
+        retiree will not live to need."""
+        strategy = GuytonKlinger()
+        strategy.reset()
+        strategy.decide(context(portfolio_value=1_000_000, years_remaining=30))
+        strategy.decide(context(portfolio_value=300_000, years_remaining=10))
+        assert strategy.multiplier == pytest.approx(1.0)
+
+    def test_guyton_klinger_still_cuts_just_outside_the_final_years(self):
+        strategy = GuytonKlinger()
+        strategy.reset()
+        strategy.decide(context(portfolio_value=1_000_000, years_remaining=30))
+        strategy.decide(context(portfolio_value=300_000, years_remaining=16))
+        assert strategy.multiplier < 1.0
 
     def test_guyton_klinger_raises_after_a_good_run(self):
         strategy = GuytonKlinger()
@@ -175,6 +194,17 @@ class TestAllocationStrategies:
         assert strategy.real_return(self._asset(), market, 5) == pytest.approx(0.05)
         assert strategy.real_return(self._asset(), market, 10) == pytest.approx(0.0)
         assert strategy.real_return(self._asset(), market, 50) == pytest.approx(0.0)
+
+    def test_bond_tent_de_risks_into_retirement_then_re_risks(self):
+        """The Kitces/Pfau V-shape: lowest equity *at* retirement (year 10
+        here), not before or long after."""
+        market = {"global_equity": 0.10, "gov_bonds": 0.0}
+        tent = BondTent(start_pct=0.9, low_pct=0.4, end_pct=0.7,
+                        years_to_low=10, years_to_recover=10)
+        assert tent.real_return(self._asset(), market, 0) == pytest.approx(0.09)
+        assert tent.real_return(self._asset(), market, 10) == pytest.approx(0.04)   # the low point
+        assert tent.real_return(self._asset(), market, 20) == pytest.approx(0.07)
+        assert tent.real_return(self._asset(), market, 50) == pytest.approx(0.07)   # holds after recovering
 
 
 class TestDrawdownStrategies:
