@@ -17,6 +17,12 @@ per-person mortality, care costs — wired up to a set of [Claude
 Code](https://claude.com/claude-code) skills that turn a conversation about
 your finances into a running model of them.
 
+**Tax and estate rules are UK-specific today** (`tax/uk.py`, `tax/iht.py`) —
+income tax, NI, State Pension, the pension IHT change coming in April 2027.
+The cashflow, mortality and Monte Carlo machinery underneath none of that is
+UK-specific, so another jurisdiction is a new `tax` module and a rewrite of
+the tax-facing skills, not a different engine.
+
 ## An example
 
 You, in Claude Code, inside this repo:
