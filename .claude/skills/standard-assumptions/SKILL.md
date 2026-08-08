@@ -73,6 +73,7 @@ hidden.
 | GIA distribution yield | 2% | Long-run global equity | — |
 | Immediate needs annuity pricing | 3-year impaired expectation, 25% loading | Planning approximation | Overstates the premium |
 | Gift growth rate | 0% (valued as spent on receipt) | Deliberate | Neither; **run both**, the answer flips |
+| "Global equities" / "the market", unspecified | `SampledSeries("global_equity")` — the US-proxy series (S&P 500 + 10yr Treasury, Damodaran/NYU Stern) | Same convention FIRECalc and cFIREsim use: one long, clean, well-understood historical series rather than a constructed global one | Not global; see below before reaching for an alternative |
 
 **When a default is doing real work, say so out loud.** If the recommendation
 turns on one of these — a marginal retirement date, an estate near the £2m
@@ -110,3 +111,26 @@ this reason; treat an unverified figure as an open question, not a default.
 **Where two reasonable defaults disagree, run both.** Gifting valued as spent
 versus invested is the standing example — the conclusion inverts, so picking
 one silently picks the answer.
+
+**`global_equity_gdpw`/`global_bonds_gdpw` and `ParametricNormal` are not
+alternative defaults — they are specific-purpose tools that need a reason
+and a disclosure, every time.** The US-proxy series above is the one to
+reach for whenever a client says "global equities," "the market," or names
+no particular assumption. Reach for one of the other two only when there is
+a specific, stated reason to (a client asking specifically about
+non-US-concentration risk, a request to see a bias-corrected or
+capital-market-assumption view, or similar) — and when you do, say so and
+state the limitation in the same breath, not as a footnote:
+
+  * `global_equity_gdpw`/`global_bonds_gdpw` is a real historical panel
+    (JST Macrohistory, 16 countries, 1900-2020), but survivorship-biased —
+    it runs about 2 points/year hot on equities against the UBS Global
+    Investment Returns Yearbook's own published figure, for reasons
+    documented in `tools/fetch_global_market_data.py` and REVIEW.md sec.6.
+  * `ParametricNormal` is an independent year-by-year draw from a
+    distribution, not a historical sequence — no autocorrelation, no mean
+    reversion, no sequence that ever actually happened. Never swap it in
+    for the historical bootstrap silently; the two answer different
+    questions and can disagree by a large margin for the same household
+    (a 32.4% vs 7.6% success-probability gap on the same test case is the
+    standing example — see REVIEW.md sec.6).

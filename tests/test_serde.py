@@ -20,6 +20,7 @@ from retireplan import (
     HeldToMaturityCredit,
     Household,
     Maturity,
+    ParametricNormal,
     Person,
     SampledSeries,
     compile_plan,
@@ -37,6 +38,7 @@ class TestReturnModelRoundTrip:
         FixedNominal(0.08),
         Blend.of(global_equity=0.6, gov_bonds=0.4),
         HeldToMaturityCredit(nominal_yield=0.07, n_holdings=10),
+        ParametricNormal(mean=0.052, stdev=0.19),
     ])
     def test_round_trips(self, model):
         assert return_model_from_dict(return_model_to_dict(model)) == model

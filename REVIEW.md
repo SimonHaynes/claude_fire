@@ -477,3 +477,158 @@ balance, optimistic. Closing 1.1–1.5 confirmed it: **every one of those five
 changes made plans worse**, and together they moved the sample household from
 95.6% to 93.5% before care and to 84% with it. The remaining errors still
 point the same way, but less far.
+
+---
+
+## 6. External validation — checked against published, real-world sources
+
+Everything above is internal review. Added 8 August 2026, in response to a
+challenge that internal review cannot answer on its own: does the engine
+agree with anyone outside this repo? Two scripts, `tools/validate_swr_bengen.py`
+and `tools/validate_care_monevator.py`, run the actual `compile_plan`/`project`
+pair (not a bespoke reimplementation) against a classic published study and a
+complex real-world worked example, and report what does and doesn't match.
+
+### 6.1 Safe withdrawal rates vs Bengen (1994) and the Trinity Study
+
+Method: every real, non-bootstrapped 30-year historical window retireplan's
+own shipped data allows (1928-1995, 68 starts), a 50/50 `StaticMix` ISA, a
+fixed real withdrawal spent regardless (`withdrawal=None`), no tax (ISA, no
+other income) — the same rules both papers use.
+
+  * **Trinity-style check, 4% withdrawal, 50/50, 30 years: 100% of retireplan's
+    68 historical starts succeed**, against the widely-cited ~95-100% from
+    various re-runs of the original study.
+  * **Bengen-style SAFEMAX: 4.81%**, against Bengen's published 4.15%.
+    retireplan is more optimistic here by about 0.7 points — a real gap,
+    not noise, and worth stating rather than rounding away. But the
+    qualitative finding is exact: **the binding, worst-case cohort in
+    retireplan's own data is 1966**, the same decade Bengen's SAFEMAX comes
+    from. The mechanism that matters — sequence-of-returns risk from a
+    stagflationary decade landing early in a retirement — is present and
+    correctly identified; the exact percentage differs because the data
+    does (NYU Stern/Damodaran S&P 500 + 10-year Treasury vs Bengen's
+    Ibbotson SBBI series — same instruments, different vintage of the same
+    market history). For calibration, this is within the range published
+    SAFEMAX figures move across their own re-runs and data revisions: one
+    of Wade Pfau's later re-runs of the *same* Trinity assumptions found
+    100% success where the original found 95%.
+
+### 6.2 Care means-testing vs a real-world case study (Monevator)
+
+Method: transcribed a first-person case study
+(monevator.com/social-care-costs/) — the site's own author modelling his
+eventual entry into residential care — into a household
+(`workspace/validation_monevator_care/`) and ran it through both
+`project()` deterministically (matching the article's own 6-year,
+age-85-onset framing exactly) and `run_monte_carlo` (sampling onset and
+duration, the real path a client's plan would take).
+
+  * **The tariff-income formula matches the article's own number to the
+    pound**: `MeansTest.tariff_income`, given the article's own inputs,
+    returns £16,640/yr — exactly what the article states.
+  * **The article uses the wrong regime, and says so.** It explicitly
+    models the October 2023 Dilnot-style reform (£20,000/£100,000 capital
+    limits, an £86,000 lifetime cap), calling it a bet that "this shake-up
+    will be closer to the truth than the current bands." That reform has
+    since been deferred indefinitely; `care.py` ships the thresholds
+    actually in force today (£14,250/£23,250, no cap) — correctly. Run
+    through retireplan, the article's own household gets **less** state
+    support under today's real rules than its own narrative describes.
+  * **The bigger finding was about capital, not thresholds.** retireplan
+    counts a person's residual DC pension pot as assessable capital once
+    they need care — the reading current guidance actually supports for a
+    pot in drawdown. The article's own £16,640 tariff-income example is
+    only consistent with counting the £100,000 ISA and *not* the
+    £300,000 pension pot. Run the household retireplan's way (pot counted)
+    and the household is a full self-funder for most of a six-year stay
+    under *either* threshold regime — which threshold is in force barely
+    changes the outcome next to whether the pension pot counts as capital
+    at all. That is a genuine, checkable disagreement with the source, not
+    a rounding difference, and it cuts in the direction this engine's
+    other reviews have found before (§1): the popular framing was the more
+    flattering one.
+  * **The Monte Carlo run confirms the mechanism differentiates correctly
+    per trial** — 894 of 2,000 trials pay a genuinely different amount
+    under the two regimes — **but the two regimes' reported bequest
+    percentiles came out identical.** Traced to source: for this
+    household's capital-to-spending ratio, every trial long enough to
+    reach the band where the regimes disagree also fully exhausts the
+    portfolio by the end regardless of regime — the extra state support
+    changes how the money runs out, not whether it does, so the terminal
+    wealth statistic is insensitive to it while `state_funded_care_probability`
+    (38.4% vs 44.7%) correctly shows the difference. Not a bug; a real
+    property of a household whose resources sit close to the edge of what
+    six years of full-cost care requires — and a reminder that a single
+    headline statistic can hide a mechanism that is working correctly.
+
+### 6.3 The underlying return data itself, checked against external sources
+
+Added 9 August 2026, after building a second return series
+(`global_gdpw_*.csv`, GDP-PPP-weighted, 16 countries, sourced from the
+Jorda-Schularick-Taylor Macrohistory Database -- see
+`tools/fetch_global_market_data.py`) and being asked, correctly, to verify it
+independently rather than trust it because the pipeline that built it looked
+reasonable. Everything in this engine is downstream of these numbers, so this
+is the one validation in this document that checks data rather than
+mechanism.
+
+  * **`us_long_*.csv` matches its own cited source (Damodaran/NYU Stern)
+    almost exactly.** `tests/test_market.py::test_nominal_returns_match_the_cited_source_exactly`
+    reconstructs the *nominal* return this file implies (undoing the CPI
+    deflation) and checks it against Damodaran's page directly for five
+    landmark years -- agreement to within 0.03 points on every one. This is
+    a stronger check than it sounds: nominal returns for closed historical
+    years cannot legitimately drift between fetches (only CPI revisions move
+    the *real* figure), so this can be asserted tightly and left in the
+    permanent suite rather than as a one-off.
+  * **One apparent mismatch turned out to be between external sources, not
+    a bug here.** A third-party site (officialdata.org) shows 1928 as
+    +37.88%; this package and Damodaran's own page both show +43.81%.
+    Different public compilations of pre-1957 S&P history disagree with
+    each other; this package matches the one it says it uses.
+  * **The new `global_gdpw_*.csv` (shipped from 1900 only -- 1870-1899 is
+    real data but too thin a country panel, as few as 5 of 16, to call
+    itself "global") checked against three sources it wasn't built from**,
+    all quoted directly rather than paraphrased: UBS's Global Investment
+    Returns Yearbook 2025 via Cambridge Judge Business School (Elroy
+    Dimson's own institution) -- *"the annualised real returns were 5.2%
+    for worldwide equities versus 1.7% on bonds"*, 1900-2024; the same
+    edition's public summary PDF -- *"global equity investors ... enjoyed
+    an annualized real return of 3.5%"*, 2000-2024; and MSCI World's
+    official 2008 return (-40.71%). `tools/validate_market_data.py` runs
+    all four checks and prints the gap rather than asserting exact
+    agreement, since exact agreement isn't expected -- and the results land
+    almost exactly where the file's own docstring predicted *before* the
+    check was run:
+    - Equities since 1900: ours 7.19% vs UBS 5.20% (+1.99pt, in the
+      predicted direction -- survivorship bias in the 16-country panel).
+    - **Bonds since 1900: ours 1.73% vs UBS 1.70% (+0.03pt)** -- bonds
+      are far less exposed to the survivorship effect than equities (a
+      sovereign defaulting on debt and a stock market being wiped out by
+      revolution are different kinds of event), and the near-exact
+      agreement here is good evidence the *pipeline* is sound and the
+      equity gap is exactly the documented methodological one, not an
+      undiagnosed error.
+    - Equities since 2000 (a different, shorter, independent window):
+      ours 3.41% vs UBS 3.50% (-0.09pt), despite this file's own data
+      ending in 2020 and missing 2021-2024 entirely.
+    - 2008 crash year, nominal: ours -38.33% vs MSCI World -40.71%
+      (+2.38pt) -- same order of magnitude, GDP-proxy vs true cap
+      weighting explains the rest.
+  * **Not yet a permanent test**, unlike the `us_long` check above: the
+    global series isn't part of the standard `DATA_SETUP.md` fetch pipeline,
+    so nothing should hard-depend on the file existing. Run
+    `tools/validate_market_data.py` by hand after regenerating it.
+
+### 6.4 What this does and doesn't establish
+
+A match against Bengen/Trinity is evidence the cashflow, allocation and
+withdrawal machinery do what a rolling historical SWR study expects. A
+formula-level match against Monevator's own arithmetic, plus a real,
+attributable disagreement in the fuller picture, is evidence the care/means-test
+module is implemented correctly *and* applies it more rigorously than a
+well-regarded published source did. Neither validates the UK income-tax,
+IHT, mortality or drawdown-ordering machinery (§1 covers those), and neither
+should be re-run and reported as a fresh number without re-checking the
+published figures haven't themselves been revised.

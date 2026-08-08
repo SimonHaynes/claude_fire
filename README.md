@@ -203,6 +203,7 @@ The choice that most often flatters a plan:
 | `HeldToMaturityCredit(0.07)` | bonds bought at a yield and held to maturity |
 | `FixedReal(0.02)` | where a real return is genuinely intended |
 | `Blend.of(global_equity=0.6, gov_bonds=0.4)` | a fixed mix |
+| `ParametricNormal(mean=0.052, stdev=0.19)` | Monte Carlo from a distribution, not history |
 
 `HeldToMaturityCredit` models the instrument rather than a bond fund: held to
 maturity there is no mark-to-market risk (it redeems at par), so the risk is
@@ -216,6 +217,21 @@ speculative-grade statistics (4.5% through the cycle, ~10% in a recession).
 A quoted 6–8% is a **nominal** coupon. Modelling it as a real return grants an
 inflation-proof yield that no product offers, and hides the risk that actually
 threatens fixed-income holdings: a 1970s-style decade.
+
+`ParametricNormal` is the other family entirely: an independent Normal draw
+every year, no sequence that ever actually happened, no autocorrelation or
+mean reversion. `BlockBootstrap`-sampled history (the default) is what
+FIRECalc and cFIREsim both do and what this engine defaults to; this is the
+parametric alternative the same tools offer alongside it — for a household
+using capital market assumptions instead of a resampled historical panel, or
+wanting a global equity assumption without the survivorship bias inherent in
+any panel of markets that happened to keep functioning continuously (see
+`tools/fetch_global_market_data.py` and REVIEW.md sec.6 for that bias,
+measured, not guessed at — the 5.2%/1.7% real figures above are the UBS
+Global Investment Returns Yearbook's own published equity/bond means). Never
+silently swap one family for the other: they answer different questions and
+the choice should be attributable in the same way every other assumption in
+this engine is.
 
 ## Sampling windows
 

@@ -23,7 +23,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (
@@ -33,6 +33,7 @@ from .market import (
     FixedReal,
     HeldToMaturityCredit,
     MarketData,
+    ParametricNormal,
     ReturnModel,
     SampledSeries,
 )
@@ -92,7 +93,7 @@ __all__ = [
     "IncomeSource", "IncomeType", "Maturity", "PensionAccess", "Person", "Phase",
     # market
     "BlockBootstrap", "Blend", "FixedNominal", "FixedReal", "HeldToMaturityCredit",
-    "MarketData", "ReturnModel", "SampledSeries",
+    "MarketData", "ParametricNormal", "ReturnModel", "SampledSeries",
     # mortality
     "FixedAge", "LifeTable", "MortalityModel",
     # engine

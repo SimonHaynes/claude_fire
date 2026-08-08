@@ -38,6 +38,15 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
   (`HeldToMaturityCredit`) that simply hadn't been wired up yet. If caching
   fails on a model that looks otherwise fine, check `serde.py` before
   assuming the household is wrong.
+- **A wide sweep (many dates × many withdrawal rules, say) is many full
+  cache misses, not one.** `cache_key()` hashes the whole scenario including
+  its `name`, so two runs differing only by retirement quarter or rule are
+  unrelated cache entries — there is no reuse of the underlying bootstrap
+  paths between them. `run_monte_carlo` is single-threaded, pure-Python, and
+  costs a few seconds per 2000-trial call; a sweep of dozens of points at full
+  trial count is minutes, not seconds, and each call is independent of the
+  others (nothing shares state), so it is trivially parallelizable across
+  processes if the wall-clock time matters — nothing currently does this.
 
 ## Sanity-check before handing on
 

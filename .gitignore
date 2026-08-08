@@ -20,6 +20,10 @@ venv/
 workspace/*/
 !workspace/sample_client/
 
+# Belt-and-suspenders: loose files dropped directly in workspace/ (not inside
+# a per-client subdirectory) are not covered by the rule above — ignore them too.
+workspace/*.*
+
 # Generated report artefacts (rebuild with `python -m workspace.<name>.build_report`)
 workspace/**/report*.pdf
 workspace/**/report*.html

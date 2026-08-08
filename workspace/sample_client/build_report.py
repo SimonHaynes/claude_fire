@@ -388,7 +388,7 @@ def _detail_section(result, window: str) -> dict:
         }]
         bridge_intro = (
             f"Everything outside a pension — cash, the ISAs, and the GIA the model opens "
-            f"automatically for surplus — in {labels[access_year - 1]}, the year before "
+            f"automatically for surplus — in {access_year - 1}, the year before "
             f"the first pension unlocks. Read the year *before* access, not the access "
             f"year itself: a plan that draws the pension hard the moment it unlocks can "
             f"refill the bridge in the same year, which would make even a bridge that had "

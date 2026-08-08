@@ -7,10 +7,11 @@ impossible to spot downstream.
 from __future__ import annotations
 
 import random
+import statistics
 
 import pytest
 
-from retireplan import Blend, FixedNominal, FixedReal, MarketData, SampledSeries
+from retireplan import Blend, FixedNominal, FixedReal, MarketData, ParametricNormal, SampledSeries
 from retireplan.market import BlockBootstrap
 
 
@@ -41,6 +42,25 @@ class TestReturnModels:
         assert FixedReal(0.1).series_keys() == frozenset()
         assert FixedNominal(0.1).series_keys() == frozenset({"inflation"})
         assert Blend.of(a=0.5, b=0.5).series_keys() == frozenset({"a", "b"})
+
+    def test_parametric_normal_falls_back_to_its_mean_without_an_rng(self):
+        """A deterministic projection (no rng) must stay readable, same
+        convention as `HeldToMaturityCredit`."""
+        assert ParametricNormal(mean=0.052, stdev=0.19).real_return({}) == 0.052
+
+    def test_parametric_normal_draws_around_its_mean_with_an_rng(self):
+        model = ParametricNormal(mean=0.05, stdev=0.15)
+        draws = [model.real_return({}, random.Random(seed)) for seed in range(500)]
+        assert -0.05 < statistics.mean(draws) - 0.05 < 0.05  # loose: a sample mean, not the true mean
+        assert statistics.stdev(draws) == pytest.approx(0.15, rel=0.25)
+
+    def test_parametric_normal_ignores_the_market_and_needs_no_series(self):
+        assert ParametricNormal(mean=0.05, stdev=0.15).series_keys() == frozenset()
+        # Different `market` dicts must not change the draw for a fixed rng state.
+        model = ParametricNormal(mean=0.05, stdev=0.15)
+        a = model.real_return({"global_equity": 0.99}, random.Random(1))
+        b = model.real_return({}, random.Random(1))
+        assert a == b
 
 
 class TestMarketData:
@@ -89,6 +109,45 @@ class TestMarketData:
         assert data.by_year[2008]["global_equity"] == pytest.approx(-0.39, abs=0.01)
         assert data.by_year[1974]["global_equity"] == pytest.approx(-0.33, abs=0.01)
         assert data.by_year[2022]["short_corporate"] == pytest.approx(-0.126, abs=0.005)
+
+    def test_nominal_returns_match_the_cited_source_exactly(self):
+        """The *nominal* return implied by our stored (real, inflation) pair
+        should match Damodaran's own published page almost exactly -- unlike
+        the test above, this one can be tight, because it is checking
+        something that cannot legitimately drift.
+
+        A closed historical year's nominal S&P 500 / Treasury return is a
+        fixed historical fact; only *our* real-return figure moves between
+        fetches, because CPI itself gets revised. Reconstructing the nominal
+        figure -- (1+real)*(1+inflation)-1 -- and comparing it against
+        Damodaran's page cancels that source of drift out, so this checks
+        the one thing that should never change: did the fetch script
+        transcribe its cited source correctly.
+
+        Verified directly against
+        https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html
+        on 2026-08-09 (the "S&P 500 (includes dividends)" and "10-year
+        Treasury" columns): 1929 equity -8.30%; 1974 equity -25.90%, bond
+        +1.99%; 2008 equity -36.55%, bond +20.10%; 2022 equity -18.04%.
+        Cross-checked independently against officialdata.org/slickcharts for
+        1929/1974/2008/2022, which agree with Damodaran to within their own
+        rounding on every year except 1928 (they show +37.88%; Damodaran, and
+        this package, show +43.81%) -- a known disagreement *between* public
+        sources on pre-1957 S&P history, not a transcription error here; see
+        REVIEW.md sec.6 for why 1928 is the one year not asserted below.
+        """
+        data = MarketData.load()
+
+        def nominal(year, key):
+            row = data.by_year[year]
+            return (1 + row[key]) * (1 + row["inflation"]) - 1
+
+        assert nominal(1929, "global_equity") == pytest.approx(-0.0830, abs=0.001)
+        assert nominal(1974, "global_equity") == pytest.approx(-0.2590, abs=0.001)
+        assert nominal(1974, "gov_bonds") == pytest.approx(0.0199, abs=0.001)
+        assert nominal(2008, "global_equity") == pytest.approx(-0.3655, abs=0.001)
+        assert nominal(2008, "gov_bonds") == pytest.approx(0.2010, abs=0.001)
+        assert nominal(2022, "global_equity") == pytest.approx(-0.1804, abs=0.001)
 
     def test_returns_are_decimals_not_percentages(self):
         """A units slip here would inflate every projection by 100x."""

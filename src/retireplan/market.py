@@ -81,6 +81,60 @@ class FixedReal:
 
 
 @dataclass(frozen=True)
+class ParametricNormal:
+    """A real return drawn each year from a Normal(mean, stdev) distribution,
+    independently -- the standard alternative to bootstrapping a historical
+    series, not a replacement for it.
+
+    Every year is an independent draw. That is a real, documented limitation
+    relative to `BlockBootstrap`-sampled history, not a simplification this
+    class hides: no autocorrelation, no mean reversion, no fat tails, no
+    sequence that ever actually happened. Wade Pfau's comparison of the two
+    families ("Monte Carlo Simulations Versus Historical Simulations")
+    is explicit that this is the standing critique of parametric Monte
+    Carlo -- markets exhibit mean reversion after crashes that an IID normal
+    draw cannot reproduce, so this model tends to understate how much a bad
+    early sequence and a subsequent recovery correlate. Kitces' finding runs
+    the other way for the tails specifically: because a real 30-year
+    historical window is drawn from a finite, already-survived sample,
+    Monte Carlo -- sampling a wider distribution than history happened to
+    realise -- can show a *worse* tail than any actual historical period did.
+    Neither family dominates; which matters for a given question is the
+    reason both exist here rather than one replacing the other.
+
+    Deliberately does **not** attempt to correct `SampledSeries`-style
+    historical data for known biases (survivorship, single-country
+    coverage, and so on) by adjusting its mean or shape -- that is not
+    standard practice anywhere in this space; FIRECalc and cFIREsim both
+    use their historical series exactly as recorded and document the bias
+    as a caveat rather than editing the data (see REVIEW.md sec.6). Use
+    this class instead, with parameters taken from a source that already
+    accounts for the bias you care about -- a published capital market
+    assumption, or (see `tools/fetch_global_market_data.py`) the DMS/UBS
+    Global Investment Returns Yearbook's own headline figures -- rather
+    than asking a historical series to be two things at once.
+
+    Needs no historical series (`series_keys()` is empty), which has one
+    side effect worth knowing before reading a result: a household using
+    this for every asset still reports `sample_years`/`sample_first_year`/
+    `sample_last_year` from whatever other CSVs happen to be loaded (an
+    empty requirement is satisfied by every year in the data), even though
+    none of those years' actual returns fed the simulation at all. Not new
+    to this class -- `FixedReal`-only households already do this -- but
+    easy to misread as "97 years of history" when the real answer is zero.
+    """
+
+    mean: float
+    stdev: float
+
+    def real_return(self, market: YearReturns, rng: random.Random | None = None) -> float:
+        return self.mean if rng is None else rng.gauss(self.mean, self.stdev)
+
+    def series_keys(self) -> frozenset[str]:
+        return frozenset()
+
+
+@dataclass(frozen=True)
 class FixedNominal:
     """A fixed *nominal* yield — a bond slice, a fixed-rate savings product.
 

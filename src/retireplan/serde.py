@@ -12,7 +12,15 @@ import json
 from datetime import date
 from typing import Any
 
-from .market import Blend, FixedNominal, FixedReal, HeldToMaturityCredit, ReturnModel, SampledSeries
+from .market import (
+    Blend,
+    FixedNominal,
+    FixedReal,
+    HeldToMaturityCredit,
+    ParametricNormal,
+    ReturnModel,
+    SampledSeries,
+)
 from .mortality import FixedAge, model_from_spec
 from .model import (
     Asset,
@@ -52,6 +60,8 @@ def return_model_to_dict(model: ReturnModel) -> dict[str, Any]:
         return {"kind": "fixed_real", "rate": model.rate}
     if isinstance(model, FixedNominal):
         return {"kind": "fixed_nominal", "nominal_rate": model.nominal_rate}
+    if isinstance(model, ParametricNormal):
+        return {"kind": "parametric_normal", "mean": model.mean, "stdev": model.stdev}
     if isinstance(model, Blend):
         return {
             "kind": "blend",
@@ -78,6 +88,8 @@ def return_model_from_dict(raw: dict[str, Any]) -> ReturnModel:
         return FixedReal(raw["rate"])
     if kind == "fixed_nominal":
         return FixedNominal(raw["nominal_rate"])
+    if kind == "parametric_normal":
+        return ParametricNormal(mean=raw["mean"], stdev=raw["stdev"])
     if kind == "blend":
         return Blend(tuple((return_model_from_dict(m), w) for m, w in raw["parts"]))
     if kind == "held_to_maturity_credit":
@@ -345,8 +357,16 @@ def household_from_dict(raw: dict[str, Any]) -> Household:
 
 
 def dump_household(household: Household, indent: int = 2) -> str:
+    """Serialize to a JSON string (like `json.dumps`, not `json.dump`).
+
+    This does not write a file. A second positional argument is `indent`,
+    not a path — passing a path there is silently accepted (`json.dumps`
+    treats any string `indent` as the indent string) and writes nothing.
+    To save to disk: `Path(path).write_text(dump_household(household))`.
+    """
     return json.dumps(household_to_dict(household), indent=indent)
 
 
 def load_household(text: str) -> Household:
+    """Parse a JSON string (like `json.loads`, not `json.load`) — not a path."""
     return household_from_dict(json.loads(text))

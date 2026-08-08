@@ -37,6 +37,40 @@ If a source changes shape and the script starts failing, the CSV header
 comments it writes document the exact source URL and method, so a manual
 rebuild is always possible even if the automation needs fixing.
 
+## Global market data (optional — `global_equity_gdpw`/`global_bonds_gdpw`)
+
+Not needed for normal use. The engine's default return series
+(`global_equity`/`gov_bonds`, above) is a US proxy, deliberately — see
+`.claude/skills/standard-assumptions/SKILL.md` for when that default is
+right and when it isn't. This second series exists for the specific,
+stated-reason case: a GDP-PPP-weighted, 16-country historical panel, for
+comparing against or knowingly opting into instead of the US-only default.
+
+```bash
+.venv/bin/python tools/fetch_global_market_data.py
+```
+
+Writes `global_gdpw_<start>_<end>.csv` (currently `global_gdpw_1900_2020.csv`).
+No API key needed — the source (Jorda-Schularick-Taylor Macrohistory
+Database, macrohistory.net) needs no authentication. Like every file in
+`src/retireplan/data/`, it is fetched, not committed (`.gitignore`'s
+`src/retireplan/data/*.csv` already covers it — nothing extra to configure).
+
+**Read `tools/fetch_global_market_data.py`'s module docstring before using
+the series it produces.** It documents, in detail, exactly what this
+construction is not: not true market-cap weighting (GDP-PPP is the
+industry-standard proxy where cap data doesn't reach, not the same thing),
+not free of survivorship bias (no Russia 1917, no China 1949 — the country
+panel only includes markets that kept functioning continuously), and not
+the whole world (16-18 advanced economies, no emerging markets, ever).
+
+After fetching, `tools/validate_market_data.py` checks both this file and
+the default `us_long_*.csv` against external, independently-sourced
+figures (Damodaran's own page, the UBS Global Investment Returns Yearbook,
+MSCI World's official index returns) and prints the gap against each —
+see REVIEW.md sec.6 for the full write-up of what it found and why the
+gaps are the size they are.
+
 ## Mortality (ONS life tables)
 
 ```bash
