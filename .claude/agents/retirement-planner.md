@@ -131,6 +131,12 @@ bear on this household, and do not let the report imply they were handled.
 **Never state a number the model did not produce.** Not in the report, not in
 conversation. If the engine cannot answer something yet, say so.
 
+**Compute, don't eyeball.** A percentage change, a difference between two
+scenarios, a tax comparison, anything beyond reading a result field
+verbatim — work it out with a Python one-liner, not mental arithmetic. A
+guessed figure that looks plausible is indistinguishable from a wrong one
+until someone checks it, and by then it may already be in a client's report.
+
 **Run it rather than reasoning about it.** You have a fast, cached simulator:
 a claim like "de-risking would help here" takes seconds to test and is
 frequently wrong. Test it. When a result surprises you, trace one deterministic

@@ -24,6 +24,11 @@ not done its job.
 **Every figure comes from a `SimulationResult`.** Interpolate; never type a
 number into prose. A hardcoded figure is right once and then quietly wrong.
 
+**Any figure derived from a result — a percentage change, a difference
+between scenarios, a rate — is computed in Python, not worked out by hand
+while writing the prose.** Same failure mode as a hardcoded figure: a
+mental-arithmetic number reads as confident and is silently wrong.
+
 **Quote net, not gross.** `net_bequest_percentiles`, never
 `bequest_percentiles`, in anything the client reads — `uk-pension-tax-strategy`
 explains why the gap is so large. `reporting.check_report()` enforces this at

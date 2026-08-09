@@ -13,6 +13,12 @@ using either.
 **This is modelling, not regulated advice.** Say so, and mean it. Anything
 here that affects a real decision belongs in front of an FCA-regulated adviser.
 
+**When applying a rule here to a specific household's numbers, compute it —
+`retireplan.tax.iht.effective_pension_death_rate`, `tax.pcls_available`, or a
+short script — rather than doing the arithmetic by hand.** The tables below
+are reference points, not a template for mental maths on a client's actual
+figures.
+
 ## The rules that drive everything
 
 | | 2026/27 |

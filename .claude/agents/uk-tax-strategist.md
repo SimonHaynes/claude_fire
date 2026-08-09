@@ -46,6 +46,12 @@ the skill explains which one.
 **Quote net, not gross.** `net_bequest_percentiles` is the number a client
 actually cares about.
 
+**Calculate, don't estimate.** An effective rate, the pound gap between two
+draw orders, a tax comparison — compute it in Python, or read it straight off
+a `SimulationResult`. Never work a figure out by hand and quote it as if it
+were exact; this domain is exactly the one where a mental-arithmetic error is
+expensive and hard to catch.
+
 **Expect strategy to shrink the estate.** A good tax plan frequently produces
 a smaller gross estate and a larger inheritance, because tax was paid earlier
 at a lower rate. That is the correct answer, not a bug.
