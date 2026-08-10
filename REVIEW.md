@@ -92,15 +92,28 @@ are the worst affected: a £650,000 nil-rate band frozen while an estate grows
 in real terms is a steadily shrinking shelter.
 
 **Shipped.** `Assumptions.fiscal_drag` erodes frozen thresholds in real
-terms, on two clocks: income tax and NI to the announced 2028 freeze end, IHT
-bands to 2031, and the allowances with no uprating mechanism at all (Lump Sum
+terms, on two clocks: income tax and NI to their announced freeze end, IHT
+bands to theirs, and the allowances with no uprating mechanism at all (Lump Sum
 Allowance, ISA limit, CGT exempt amount, dividend allowance) indefinitely. The
 State Pension is deliberately *not* dragged — it is triple-locked. Defaults to
 `inflation=0.0`, i.e. off.
 
-*Worth knowing:* the effect is smaller than this section implies, because the
-announced freezes end. A household that expects them to be extended, as they
-repeatedly have been, should move the freeze dates and re-run.
+**The two clocks diverge, and that asymmetry is the point.** Income thresholds
+resume uprating when the freeze ends, so they stop losing real value; the
+never-uprated allowances carry on shrinking forever. Over 30 years at 2%, the
+personal allowance keeps 91% of its real value and the Lump Sum Allowance keeps
+55%. Any comparison of taking tax-free cash now against later is rigged toward
+waiting unless `inflation` is set, because a default of 0.0 silently assumes an
+indexed allowance.
+
+*The freeze dates are the one part of this that moves by Budget rather than by
+legislation, and both have now been extended twice.* `income_freeze_until` sat
+at April 2028 until August 2026, three years stale: the Budget of 26 November
+2025 extended income tax and NI to **April 2031**, alongside the IHT bands.
+Correcting it took the personal allowance's retained real value from 97% to
+91%. `FiscalDrag.verified_on` now records when the dates were last checked, the
+same guard the tax tables carry — an unverified freeze date understates drag by
+however long the freeze was quietly extended.
 
 ### 1.4 No care costs — **high** — NOW MODELLED
 

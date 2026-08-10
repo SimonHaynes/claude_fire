@@ -51,7 +51,8 @@ direction it errs so the bias is visible.
 | State pension age | 68 | Legislated | — |
 | Pension access age | 57 | Legislated from 2028 | Conservative: assumes the later age now |
 | Inflation, for frozen thresholds | 2% | Bank of England target | Understates recent experience |
-| Lump Sum Allowance over time | £268,275 **frozen in cash terms** — erodes at the inflation assumption in real terms | No indexation provision in the legislation | Taking tax-free cash earlier than an indexed allowance would justify |
+| Lump Sum Allowance over time | £268,275 **frozen in cash terms, forever** — erodes at the inflation assumption in real terms | No indexation provision in the legislation | Taking tax-free cash earlier than an indexed allowance would justify |
+| Income tax and IHT thresholds over time | Frozen to **April 2031**, then uprated — so they stop losing real value, unlike the allowances above | Budget, 26 Nov 2025; `FiscalDrag.verified_on` | Understates drag if the freeze is extended again, as it has been twice |
 | Property real growth | 0% | Deliberate | Pessimistic on estate |
 | Care: chance of needing it | ~25% (20% men, 30% women) | Published planning figures | — |
 | Care: length of stay | Mean ~2.5 years, median ~18 months, long tail | Published planning figures | — |

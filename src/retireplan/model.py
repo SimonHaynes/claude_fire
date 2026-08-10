@@ -281,18 +281,31 @@ class FiscalDrag:
     """Assumed annual inflation. Only ever used to erode frozen thresholds --
     every other figure in the engine is already in real terms."""
 
-    income_freeze_until: date = date(2028, 4, 6)
-    """Announced end of the income tax and NI threshold freeze."""
+    income_freeze_until: date = date(2031, 4, 6)
+    """Announced end of the income tax and NI threshold freeze. Extended three
+    years from April 2028 at the Budget of 26 November 2025."""
 
     iht_freeze_until: date = date(2031, 4, 6)
-    """Announced end of the inheritance tax band freeze. A different horizon
-    from income tax, so the two are tracked separately."""
+    """Announced end of the inheritance tax band freeze. Tracked separately
+    from income tax because the two have repeatedly moved on different
+    timetables, even where they currently share an end date."""
+
+    verified_on: date = date(2026, 8, 10)
+    """When the freeze end dates above were last checked against announced
+    policy. They are the one part of this model that changes by Budget rather
+    than by legislation, and both have already been extended twice -- an
+    unverified date silently understates drag by however long the freeze was
+    extended, which is why it is recorded rather than assumed."""
 
     never_uprated_freeze_forever: bool = True
     """Whether allowances with no uprating mechanism -- the Lump Sum
     Allowance, the ISA limit, the CGT exempt amount, the dividend allowance --
     keep eroding after the announced freezes end. They have not risen in
-    years, so the honest default is that they continue not to."""
+    years, so the honest default is that they continue not to.
+
+    This is the asymmetry that matters for a PCLS decision: income thresholds
+    resume uprating and so stop losing real value, while the Lump Sum
+    Allowance carries on shrinking indefinitely."""
 
 
 @dataclass

@@ -111,9 +111,33 @@ class TestNeverUpratedAllowancesKeepEroding:
 
     def test_they_can_be_made_to_track_the_income_freeze_instead(self, household):
         plan = plan_with(0.02, household, never_uprated_freeze_forever=False)
+        # Both well past the income freeze end, so erosion has stopped for good.
         assert plan.years[20].tax.isa_annual_allowance == pytest.approx(
-            plan.years[5].tax.isa_annual_allowance
+            plan.years[10].tax.isa_annual_allowance
         )
+        assert plan.years[10].tax.isa_annual_allowance < UK.isa_annual_allowance
+
+
+class TestTheTwoClocksDiverge:
+    """Income thresholds resume uprating when the freeze ends; the allowances
+    with no uprating mechanism never do. That asymmetry is what makes delaying
+    a PCLS lose value while the bands it is drawn against hold theirs."""
+
+    def test_income_thresholds_stop_eroding_but_the_lump_sum_allowance_does_not(self, household):
+        plan = plan_with(0.02, household)
+        late, later = plan.years[20].tax, plan.years[30].tax
+        assert late.income_tax_schedule.bands[0].upper == pytest.approx(
+            later.income_tax_schedule.bands[0].upper
+        )
+        assert later.lump_sum_allowance < late.lump_sum_allowance
+
+    def test_the_lump_sum_allowance_loses_far_more_than_the_personal_allowance(self, household):
+        plan = plan_with(0.02, household)
+        end = plan.years[30].tax
+        kept_allowance = end.income_tax_schedule.bands[0].upper / UK.income_tax_schedule.bands[0].upper
+        kept_lsa = end.lump_sum_allowance / UK.lump_sum_allowance
+        assert kept_allowance > 0.85          # capped by the announced freeze end
+        assert kept_lsa < 0.60                # frozen in cash terms indefinitely
 
 
 class TestStatePensionIsNotDragged:
@@ -139,11 +163,19 @@ class TestIHTBandsErodeOnTheirOwnHorizon:
         at_2070 = _iht_at(UK_IHT, drag, AS_OF, date(2070, 1, 1))
         assert at_2040.nil_rate_band == pytest.approx(at_2070.nil_rate_band)
 
-    def test_the_iht_horizon_differs_from_the_income_one(self):
-        # IHT bands are frozen to 2031, income tax to 2028 -- so the two must
-        # not share a factor.
-        drag = FiscalDrag(inflation=0.02)
-        assert drag.iht_freeze_until != drag.income_freeze_until
+    def test_the_iht_horizon_is_tracked_separately_from_the_income_one(self):
+        """The two clocks have repeatedly moved on different timetables, so
+        neither may borrow the other's factor -- tested by setting them apart
+        rather than by asserting today's announced dates happen to differ,
+        which they no longer do."""
+        drag = FiscalDrag(
+            inflation=0.02,
+            income_freeze_until=date(2028, 4, 6),
+            iht_freeze_until=date(2040, 4, 6),
+        )
+        iht = _iht_at(UK_IHT, drag, AS_OF, date(2070, 1, 1))
+        income_factor = real_terms_factor(0.02, (date(2028, 4, 6) - AS_OF).days / 365.25)
+        assert iht.nil_rate_band / UK_IHT.nil_rate_band < income_factor
 
     def test_taper_threshold_moves_with_the_bands(self):
         # A shrinking residence band tested against a fixed £2m threshold
