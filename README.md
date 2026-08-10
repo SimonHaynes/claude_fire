@@ -99,29 +99,73 @@ is purchasing power, not future pounds.
 
 ## Install
 
+Once, on a new machine. Needs **Python 3.10 or newer** and **Node 18+** (for
+Claude Code).
+
+**1. Install Claude Code.** It is the interface to all of this, not an optional
+extra — see [Requires Claude Code](#requires-claude-code) above.
+
 ```bash
-python -m venv .venv
-.venv/bin/pip install -e ".[report,dev]"    # core engine has no dependencies
+npm install -g @anthropic-ai/claude-code
 ```
 
-`report` adds jinja2 + weasyprint for the PDF. The engine itself is
-dependency-free.
-
-The market and mortality data the engine simulates against is **not checked
-into this repo** — see [Data](#data) below. Fetch it once before running
-`pytest` or any simulation:
+**2. Clone the repo and go into it.** Every command below, and every command
+in the rest of this README, is run from the repo root.
 
 ```bash
-cp .env.example .env               # add your own free FRED API key
+git clone https://github.com/SimonHaynes/claude_fire.git
+cd claude_fire
+```
+
+**3. Get a free FRED API key** from
+[fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys)
+— instant, no approval wait — and put it in `.env`:
+
+```bash
+cp .env.example .env       # then edit it: FRED_API_KEY=your_key_here
+```
+
+`.env` is gitignored. The key is only used to pull US CPI and the NBER
+recession series when building the market data in step 5.
+
+**4. Create the virtualenv and install the package.**
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -e ".[report,dev]"
+```
+
+The engine itself is dependency-free; `report` adds jinja2, weasyprint and
+pymupdf for building and proofreading the PDF, `dev` adds pytest. On Windows
+without WSL, the path is `.venv\Scripts\` rather than `.venv/bin/`.
+
+**5. Build the market and mortality data.** It is **not checked into this
+repo** — the sources' redistribution terms are unclear, so you rebuild it
+locally instead (see [Data](#data), and `DATA_SETUP.md` for the detail). This
+takes a minute or two and is needed before any simulation will run.
+
+```bash
 .venv/bin/python tools/fetch_market_data.py
 .venv/bin/python tools/build_mortality_csv.py --fetch
+```
+
+**6. Check it worked.**
+
+```bash
 .venv/bin/python -m pytest
 ```
 
+500-odd tests, a few seconds. If they pass, the engine and its data are sound
+and you are ready to build a plan.
+
+> Steps 3–6 are ordinary setup, so you can also just do step 1, step 2, run
+> `claude` in the repo root and ask it to finish the install — it will need
+> you to paste in the FRED key at step 3, but can do the rest.
+
 ## Running a plan
 
-You need [Claude Code](https://claude.com/claude-code) installed, and the
-[Install](#install) steps above done once.
+With [Install](#install) done, everything from here happens through Claude
+Code.
 
 **1. Put your numbers in a text file.** Anywhere under `workspace/` — say
 `workspace/smith.txt`. Your own files there are gitignored (everything except
@@ -166,11 +210,16 @@ Include the goals and the constraints, not just the balances. "As early as
 possible, notice period is three months" and "we'd cut back if we had to" are
 what turn one answer into a set of alternatives worth comparing.
 
-**2. Start Claude Code in this repo and ask:**
+**2. Run `claude` in the repo root and ask for a plan.** It has to be this
+directory — the agents and skills it needs live in `.claude/` here, and it
+will not find them from anywhere else.
 
 ```bash
+cd /path/to/claude_fire
 claude
 ```
+
+Then, at the prompt:
 
 > run a FIRE plan on the information in workspace/smith.txt
 
