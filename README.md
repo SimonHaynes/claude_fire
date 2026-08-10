@@ -76,6 +76,9 @@ the output against a fixed checklist, and write the report — so the actual
 interface to a fairly serious piece of financial modelling is just talking to
 it, in this repo, with Claude Code running.
 
+**[Running a plan](#running-a-plan) below is the step-by-step.** The rest of
+this section is for scripting the engine directly.
+
 ```python
 from datetime import date
 from retireplan import Household, Scenario, GuytonKlinger, run_monte_carlo
@@ -115,22 +118,99 @@ cp .env.example .env               # add your own free FRED API key
 .venv/bin/python -m pytest
 ```
 
+## Running a plan
+
+You need [Claude Code](https://claude.com/claude-code) installed, and the
+[Install](#install) steps above done once.
+
+**1. Put your numbers in a text file.** Anywhere under `workspace/` — say
+`workspace/smith.txt`. Your own files there are gitignored (everything except
+the fabricated `sample_client/`), so real figures never reach a commit. Plain
+notes are fine; it does not need structure, and it is better to paste a messy
+list than to tidy it into something lossy:
+
+```text
+Family:
+Alex (me), born 3/4/1972.  Jo (wife), born 19/9/1974.  Two kids at uni.
+
+Alex:  salary £95K.  Pension: employee £1,200/mo, employer £400/mo (sal sac)
+Jo:    salary £38K.  Pension: employee £450/mo, employer £250/mo (sal sac)
+
+Outgoings (monthly):
+Mortgage £1,850, £94,000 left, last payment 1/8/2031
+Car loan £310, £9,400 left, last payment 1/3/2029
+Council tax + utilities ~£550.  Everything else ~£2,900
+Supporting each kid £550/mo while at uni, until 6/2028 and 6/2030
+
+In retirement (monthly): utilities ~£550, essentials ~£1,900, discretionary £900
+Plus yearly: £8,000 house/car replacement, £7,000 holiday (while we're young enough)
+
+Assets:
+House ~£520K jointly owned
+Alex:  workplace pension £610,000 (global tracker), SIPP £140,000, ISA £88,000
+Jo:    pension £96,000 (global tracker), ISA £41,000
+       DB pension £7,100/yr from 60 plus £14,000 lump sum
+Both have full NI records.
+
+Goals:
+* Retire as early as possible — my notice period is 3 months
+* Help both kids with house deposits
+* Leave whatever's left to each other, then the kids
+
+Notes:
+* Happy to take risk.  Would cut spending if things went badly, to a point.
+* Resident in England
+```
+
+Include the goals and the constraints, not just the balances. "As early as
+possible, notice period is three months" and "we'd cut back if we had to" are
+what turn one answer into a set of alternatives worth comparing.
+
+**2. Start Claude Code in this repo and ask:**
+
+```bash
+claude
+```
+
+> run a FIRE plan on the information in workspace/smith.txt
+
+**3. Answer the handful of questions it asks.** It fills every gap it can from
+published standards and tells you which — but a few things have no defensible
+default and it will stop and ask: whether to use national-average longevity or
+rate it for an affluent household, how far you would really cut spending in a
+downturn, and what to do with any goal you named but never costed. Each one
+changes the answer materially.
+
+**4. Expect it to take about half an hour**, most of it simulation. It works
+through `.claude/agents/retirement-planner.md`, which runs the chain in order —
+`intake-financial-data` to build the household, `define-scenarios` to turn your
+goals into scenarios, `run-scenario-simulation` to run them,
+`build-retirement-report` for the PDF — delegating tax and legal reasoning to
+two further agents on the way. You do not need to read any of it; it is there
+if you want to see the reasoning being followed.
+
+You end up with `workspace/smith/` containing the household definition, the
+scenarios, and `report.pdf`.
+
+**5. Then keep going, because it is a conversation and not a form:**
+
+> what if we downsize to something £150k cheaper instead of waiting?
+>
+> show me what happens if markets drop 30% the year we stop
+>
+> we'd rather spend it than leave it — what does that change?
+
+Each is a new scenario, run for real against thousands of simulated paths.
+
 ## Workspace
 
 Household definitions live outside the package, under `workspace/` — they
 are data about real people, not library code. `workspace/sample_client/` is
 a fabricated fixture used by the tests and this README; everything else
 under `workspace/` is gitignored, since real financial data should never be
-committed. With Claude Code running in this repo, describe your situation and
-ask it to build you a plan — that invokes the `retirement-planner` agent
-(`.claude/agents/retirement-planner.md`), which runs the whole chain in
-order: `intake-financial-data` to build the household, `define-scenarios` to
-turn your goals into concrete scenarios, `run-scenario-simulation` to
-actually run them, then `build-retirement-report` for the PDF — delegating
-the tax and legal reasoning inside that to two further agents along the way.
-It's several documents deep, not one skill in isolation; you don't need to
-read any of them to use it, only if you want to see the reasoning it's
-following. Or set a household up by hand the same way:
+committed.
+
+To set a household up by hand instead:
 
 ```bash
 mkdir workspace/<name>
