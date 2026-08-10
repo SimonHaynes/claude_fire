@@ -226,6 +226,15 @@ monotonically, as it must. Only the GK column has a hole in it, and the hole
 lines up exactly with the median spend: where GK scores ~91% its median spend
 is the full unreduced £64,200, i.e. **the guardrail never engaged at all**.
 
+Confirmed again on a second engagement, 10 August 2026, on a household with a
+2028-2031 bridge: GK's median spend came out identical across every date in a
+monthly sweep and 21% *above* the household's own stated budget — the
+prosperity rule ratcheting up off the inflated anchor while the
+capital-preservation rule never fired. The worst-of-three column sloped
+smoothly at about 1.5 points a month. **Median spend flat across dates, at or
+above the full unreduced plan, is the diagnostic**; it is now check 9 in the
+`simulation-runner` agent.
+
 This is Guyton-Klinger behaving as specified rather than an implementation
 fault, but it means a date can score six points better than its neighbour for
 reasons that have nothing to do with the household's finances. **Never
@@ -471,6 +480,11 @@ Items 1–5 of the original list are done (see §1). What remains:
    understates a living person's life expectancy by two to three years.
 5. **Advice fees and transaction costs (1.10)**, which compound over decades.
 6. **A better tail statistic than `worst_case_5pct_min_spend` (1.11)**.
+
+**Done since:** `run_many` (10 August 2026) runs a scenario set across
+processes. The three-rule sweep 1.12 makes mandatory was twenty minutes of
+single-threaded Python on a real engagement and is now about one, which is the
+difference between doing it and being tempted not to.
 
 The closing line of the original list said this engine's errors were, on
 balance, optimistic. Closing 1.1–1.5 confirmed it: **every one of those five

@@ -95,8 +95,9 @@ their absence from `git status` is not a problem to fix.
 6. Resolve ambiguity out loud. "House repairs, car replacement etc. £10,000/yr":
    essential or discretionary? For life, or only while there is a car? Take the
    defensible reading, record which and why, invite correction.
-7. Call `household.validate()`, write `household.json`, and show the client a
-   short summary to confirm before anything downstream uses it.
+7. Call `household.validate()`, write `household.json` with
+   `serde.dump_household`, and show the client a short summary to confirm before
+   anything downstream uses it.
 
 Every assumption goes in `household.py`'s module docstring, in the client's own
 terms. That docstring is the audit trail: the report's notes section is written

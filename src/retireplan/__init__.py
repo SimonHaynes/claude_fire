@@ -62,7 +62,7 @@ from .plan import Plan, PlanYear, compile_plan
 from .care import CareModel, CareNeed, CarePlan, ImmediateNeedsAnnuity, MeansTest
 from .scenario import Gift, IncomeAnnuity, OneOffSpend, PensionLumpSum, Scenario
 from .serde import dump_household, household_from_dict, household_to_dict, load_household
-from .simulation import SimulationResult, project_once, run_monte_carlo
+from .simulation import SimulationResult, project_once, run_many, run_monte_carlo
 from .strategies import (
     BondTent,
     ByAssetTypeMix,
@@ -99,7 +99,7 @@ __all__ = [
     # engine
     "Plan", "PlanYear", "compile_plan", "Projection", "YearResult", "project",
     "Scenario", "OneOffSpend", "Gift", "PensionLumpSum", "IncomeAnnuity",
-    "SimulationResult", "run_monte_carlo", "project_once",
+    "SimulationResult", "run_monte_carlo", "run_many", "project_once",
     # care
     "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest",
     # strategies

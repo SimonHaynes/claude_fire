@@ -21,6 +21,17 @@ number without a mechanism has not done the job.
   number into prose.
 - **Every derived figure — a change, a difference, a rate — is computed in
   Python**, never worked out by hand while writing.
+- **A "typical year" figure comes from the household's expenses, not from a
+  projection's maximum or median.** The largest projected year picks up whatever
+  time-limited items overlap — university support, the first five years of
+  holidays — and describes a year that happens five times out of forty. Sum the
+  expenses that have no `end` and no `years_from_retirement`, and give the
+  time-limited ones their own row.
+- **Say which calendar date a plan-year label means.** `pension_access_year` is
+  the plan year *containing* the birthday, and plan years start on `as_of`'s
+  month — so a 57th birthday in March 2032 reports as 2031. Quote the
+  birthday to the client and the plan year only where the table needs it;
+  printing both unexplained reads as a contradiction.
 - **Quote net, not gross**: `net_bequest_percentiles`, never
   `bequest_percentiles`. `reporting.check_report()` enforces this; do not work
   around it. `uk-pension-tax-strategy` explains the size of the gap.
@@ -49,9 +60,11 @@ Each scenario needs operating instructions — what happens, in order, in pounds
 > up to 40%, taking spending from £52,000 to £43,000 until markets recover. In
 > the worst 5% of outcomes, that is where you end up.
 
-**The template autoescapes and has no markdown filter.** `**bold**` in a
-context string renders as literal asterisks. Use `<strong>` in a `|safe` field,
-or restructure with a heading or list.
+**No markup of any kind in a context string.** The template autoescapes, has no
+markdown filter, and the only `|safe` fields are the SVGs — so `**bold**`
+renders as asterisks and `<strong>` renders as a visible tag. Both have shipped.
+For emphasis, restructure: a heading, a list, an em dash, or a separate
+paragraph. Grep the built module for `<` before rendering.
 
 Rules of thumb:
 
@@ -255,6 +268,9 @@ numbers, 4 goes deep on the recommended one.
    nomination, whether the will post-dates the last major life event, how the
    property is held, and whether LPAs exist — one cannot be created once needed.
 7. **Steps and timeline** — dated actions from the client's real accounts.
+   **Build it as `(date, text)` pairs and sort by date.** Entries get added
+   through the engagement in the order they are thought of, and a timeline whose
+   rows run 2027, 2029, 2027 is worse than none.
 8. **Notes and assumptions** — as above, plus the disclaimer.
 
 ## The dial
@@ -295,6 +311,9 @@ WeasyPrint, not a headless browser:
 
 **Always render to PNG and read the pages before calling it done.** Orphaned
 lines, split charts and overflow are invisible in the HTML:
+
+`pymupdf` is in the `report` extra. If the venv predates that, the system
+Python usually has it — the step is not optional, so use whichever has it.
 
 ```python
 import fitz

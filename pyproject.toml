@@ -13,7 +13,10 @@ requires-python = ">=3.10"
 dependencies = []          # the core engine is deliberately dependency-free
 
 [project.optional-dependencies]
-report = ["jinja2>=3.1", "weasyprint>=60"]
+# pymupdf is not for building the report but for proofreading it: rendering
+# every page to an image and reading it is the only way the escaping and
+# layout defects get caught, and that step is not optional.
+report = ["jinja2>=3.1", "weasyprint>=60", "pymupdf>=1.24"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.dynamic]

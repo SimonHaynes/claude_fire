@@ -18,9 +18,11 @@ import json
 import random
 import warnings
 import dataclasses
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, fields as dataclass_fields, is_dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any, Mapping
 
 from . import __version__
 from .cashflow import Projection, project
@@ -563,6 +565,45 @@ def run_monte_carlo(
     if cache_path is not None:
         cache_path.write_text(_result_to_json(result))
     return result
+
+
+def run_many(
+    household: Household,
+    scenarios: Mapping[Any, Scenario],
+    as_of: date,
+    *,
+    workers: int | None = None,
+    **kwargs,
+) -> dict[Any, SimulationResult]:
+    """Run every scenario, across processes, and return results in input order.
+
+    A 2,000-trial call is seconds of single-threaded pure Python, and the sweeps
+    this engine's own guidance requires — every candidate retirement date under
+    three withdrawal rules — are dozens of those. On eight cores that is the
+    difference between a minute and twenty. Each `cache_key` differs, including
+    by scenario *name*, so a sweep shares nothing and parallelism is the only
+    lever available.
+
+    `kwargs` are passed to `run_monte_carlo` unchanged; pass `seed` and
+    `cache_dir` for anything reported. The cache is one file per key, so
+    concurrent workers do not collide.
+
+    `workers=1` runs in-process, which is what to use from a debugger or a test.
+
+    **Call this from behind an `if __name__ == "__main__":` guard.** Process
+    start-up re-imports the calling module, so a bare module-level call spawns
+    workers that call it again.
+    """
+    if workers == 1:
+        return {key: run_monte_carlo(household, s, as_of, **kwargs)
+                for key, s in scenarios.items()}
+
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            key: pool.submit(run_monte_carlo, household, s, as_of, **kwargs)
+            for key, s in scenarios.items()
+        }
+        return {key: future.result() for key, future in futures.items()}
 
 
 def project_once(

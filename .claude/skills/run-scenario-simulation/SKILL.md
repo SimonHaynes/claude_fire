@@ -29,11 +29,20 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
   one makes `run_monte_carlo(..., cache_dir=...)` fail outright — this happened
   with a fully exported, documented model (`HeldToMaturityCredit`) that was
   never wired up. Check `serde.py` before assuming the household is wrong.
-- **A wide sweep is many full cache misses, not one.** `cache_key()` hashes the
-  whole scenario including its `name`, so runs differing only by quarter or rule
-  share nothing. Each 2,000-trial call costs seconds of single-threaded pure
-  Python, so a sweep of dozens of points is minutes — trivially parallelizable
-  across processes, though nothing does that today.
+- **Run a set through `run_many`, not a loop.** `cache_key()` hashes the whole
+  scenario including its `name`, so runs differing only by quarter or rule share
+  no cache, and each 2,000-trial call is seconds of single-threaded Python. A
+  serial sweep is twenty minutes where eight cores is one.
+
+  ```python
+  from retireplan import run_many
+  results = run_many(household, scenarios, as_of, seed=42, cache_dir=...)  # dict, input order
+  ```
+
+  Same arguments and same answers as `run_monte_carlo`. **Call it from behind an
+  `if __name__ == "__main__":` guard** — without one, worker start-up re-imports
+  the module and spawns workers that call it again. `workers=1` runs in-process
+  for debugging.
 
 ## Sanity-check before handing on
 

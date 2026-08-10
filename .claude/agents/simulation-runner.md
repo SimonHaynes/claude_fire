@@ -21,9 +21,14 @@ reported plainly is useful; a plausible-sounding guess is worse than silence.
 
 If the caller named specific scenarios, run those. Otherwise run them all.
 
+For a sweep — many dates, or one date under several withdrawal rules — use
+`retireplan.run_many(household, scenarios, as_of, seed=..., cache_dir=...)`
+rather than a loop: it runs across processes and is the difference between one
+minute and twenty. It needs an `if __name__ == "__main__":` guard.
+
 ## Check every scenario against this list
 
-Work through all eight. Do not stop at the first problem.
+Work through all nine. Do not stop at the first problem.
 
 1. **Success probability of exactly 0% or 100%** — a red flag, not a result.
    Check `sample_years` first; a narrow window is the usual cause.
@@ -47,6 +52,11 @@ Work through all eight. Do not stop at the first problem.
 8. **Cash should not accumulate** — `asset_type_percentiles["cash"]` should
    sit at or near zero throughout. A sustained cash balance is a real finding;
    the last one was several hundred thousand pounds of uninvested PCLS.
+9. **Median spend identical across retirement dates, at or above the full
+   unreduced plan** — `GuytonKlinger`'s guardrail never engaged, so its success
+   figure is not comparable between dates (REVIEW.md 1.12). Flag it and say the
+   date needs the worst of `GuytonKlinger` / `SpendNominal` /
+   `PostAccessStepUp`, not GK alone.
 
 ## Report back
 

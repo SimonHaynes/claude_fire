@@ -38,11 +38,9 @@ possible, bounded only by hard constraints.
 
 - **Base case struggled or failed** — build downside alternatives tied to the
   flexibility intake recorded: later date, reduced spending, different drawdown
-  order, de-risking. **Sweep, don't guess** for "the earliest date that works":
-  run a range, find where success crosses a safe threshold, then check the
-  neighbourhood — if the month before falls off a cliff, recommend a date with
-  margin and say why. Keep the failing base case as a named scenario; *why* it
-  fails is usually the most useful finding in the report.
+  order, de-risking. **Sweep, don't guess** for "the earliest date that works"
+  (below). Keep the failing base case as a named scenario; *why* it fails is
+  usually the most useful finding in the report.
 - **Base case cleared comfortably** — the commonly skipped half. **Always test
   alternatives that let the client have or spend more**: an earlier date, a
   higher withdrawal rule (`GuytonKlinger`, `PostAccessStepUp`), bringing a
@@ -83,6 +81,33 @@ possible, bounded only by hard constraints.
 
 Every alternative traces to a goal or flexibility intake actually recorded.
 Share the `HEADLINE` set in plain language and confirm before reporting.
+
+## Sweeping for a retirement date
+
+**Never pick a date on one withdrawal rule's number.** `GuytonKlinger` anchors
+its withdrawal rate on the first year of retirement, so for any household
+bridging to pension access that anchor is set abnormally high, the guardrail
+never engages, and success stops being monotonic in the date — a month can
+score six points better than its neighbour for reasons unrelated to the
+household's finances (REVIEW.md 1.12, seen twice on real engagements).
+
+Sweep `GuytonKlinger`, `SpendNominal` and `PostAccessStepUp` together and
+**recommend on the worst of the three**, which does slope smoothly. Quote that
+figure in the report beside the headline one.
+
+**The tell that you are in this trap: median spend identical across dates, and
+at or above the full unreduced plan.** That is the guardrail never firing.
+
+```python
+scenarios = {(when, name): Scenario(f"{name} {when}", retirement_dates=..., withdrawal=rule())
+             for when in dates for name, rule in RULES.items()}
+results = run_many(household, scenarios, as_of, seed=42, cache_dir=...)   # see run-scenario-simulation
+```
+
+Sweep coarsely first, then monthly around the crossing, and read the shape: a
+smooth slope needs a month or two of margin past the threshold, a cliff needs
+much more. Recommend the knee — where the curve flattens — not the crossing
+point itself, and say which you did.
 
 ## Choosing a drawdown order
 

@@ -23,6 +23,7 @@ from retireplan import (
     Scenario,
     SpendNominal,
     TaxEfficientOrder,
+    run_many,
     run_monte_carlo,
 )
 from retireplan.simulation import cache_key, percentile
@@ -382,3 +383,39 @@ class TestCaching:
         scenario = Scenario("s", retirement_dates={"A": AS_OF}, withdrawal=Sneaky())
         with pytest.raises(TypeError, match="dataclass"):
             cache_key(household, scenario, UK, AS_OF, 100, 5, 1, volatile_market)
+
+
+class TestRunMany:
+    """`run_many` must be a pure speed-up: same answers, same order."""
+
+    def _scenarios(self) -> dict:
+        return {
+            (year, name): Scenario(
+                f"{name} {year}", retirement_dates={"A": date(year, 1, 1)},
+                withdrawal=rule(),
+            )
+            for year in (2026, 2028)
+            for name, rule in (("gk", GuytonKlinger), ("flat", SpendNominal))
+        }
+
+    def test_matches_run_monte_carlo_scenario_for_scenario(self, household, volatile_market):
+        scenarios = self._scenarios()
+        parallel = run_many(household, scenarios, AS_OF, workers=2,
+                            data=volatile_market, n_trials=50, seed=7)
+        for key, scenario in scenarios.items():
+            expected = run_monte_carlo(household, scenario, AS_OF,
+                                       data=volatile_market, n_trials=50, seed=7)
+            assert parallel[key].success_probability == expected.success_probability
+
+    def test_preserves_input_order(self, household, volatile_market):
+        # Results come back as futures complete, so the dict is rebuilt in
+        # input order deliberately -- a sweep printed out of order is unreadable.
+        scenarios = self._scenarios()
+        results = run_many(household, scenarios, AS_OF, workers=2,
+                           data=volatile_market, n_trials=50, seed=7)
+        assert list(results) == list(scenarios)
+
+    def test_single_worker_stays_in_process(self, household, volatile_market):
+        results = run_many(household, self._scenarios(), AS_OF, workers=1,
+                           data=volatile_market, n_trials=50, seed=7)
+        assert len(results) == 4

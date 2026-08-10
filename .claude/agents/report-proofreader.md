@@ -19,6 +19,9 @@ for i in range(doc.page_count):
 print(doc.page_count)
 ```
 
+`pymupdf` is in the `report` extra. If the project venv predates it and has no
+`pip`, run the snippet under the system Python instead — do not skip the step.
+
 If the PDF is locked (open in a viewer), render to a new filename and say so.
 
 Then **read every page image**. Every one — defects cluster on the pages
@@ -26,13 +29,23 @@ nobody thinks to check.
 
 ## What to look for
 
-**Escaping and markdown**, the two that have actually shipped:
+**Escaping and markdown**, all of which have actually shipped:
 
 - Literal `**asterisks**` or `*emphasis*` in the body text. The template has
   no markdown filter, so these render as characters.
+- A visible `<strong>` or `<em>` tag. Only the SVG fields are `|safe`, so HTML
+  written into any prose string renders as text.
 - `&amp;` printed literally, or double-escaped as `&amp;amp;`. Usually a
   pre-escaped `client_name`.
 - Any other raw HTML entity or tag visible as text.
+
+**Ordering and consistency:**
+
+- Timeline or list entries out of date order.
+- The same event given two different dates in different sections — most often
+  a pension unlocking, where the plan-year label and the actual birthday differ
+  by a year.
+- A heading that promises a figure the body then says is unavailable.
 
 **Layout:**
 

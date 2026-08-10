@@ -88,6 +88,9 @@ result = run_monte_carlo(
 print(f"{result.success_probability:.1%} over {result.sample_years} years of history")
 ```
 
+`run_many(household, scenarios, as_of, ...)` takes a dict of them and runs it
+across processes — a sweep of a few dozen dates is a minute rather than twenty.
+
 Everything works in **real (today's money) terms**: every figure in and out
 is purchasing power, not future pounds.
 
