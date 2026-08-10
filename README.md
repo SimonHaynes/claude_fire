@@ -151,10 +151,11 @@ is dependency-free.
 
 </details>
 
-**About the data.** It is **not checked into this repo** — the sources'
-redistribution terms are unclear, so you rebuild it locally (see [Data](#data)
-and `DATA_SETUP.md`). No API key is needed: returns and inflation both come
-from Damodaran's dataset at NYU Stern, and the mortality tables from ONS.
+**About the data.** None of it ships with the repo — the sources have
+different terms and some do not permit redistribution, so every clone fetches
+its own copy (see [Data](#data) for the per-source position). No API key is
+needed: returns and inflation both come from Damodaran's dataset at NYU Stern,
+and the mortality tables from ONS.
 
 **Optionally**, a free [FRED key](https://fredaccount.stlouisfed.org/apikeys)
 in `.env` adds one more file, the NBER recession series. It is worth having
@@ -446,30 +447,63 @@ the existing ones do, and `SampledSeries("uk_house_prices")` works immediately.
 Obvious candidates, none of them done: UK house prices (Nationwide and the Land
 Registry both publish freely), REITs via FTSE NAREIT, index-linked gilts, and
 MSCI EM from 1988. A GBP-denominated equity series is the biggest gap for UK
-users — the Barclays Equity Gilt Study and the DMS dataset both cover it, and
-both are licensed rather than free, which is why this repo does not ship one.
+users — the Barclays Equity Gilt Study and the DMS dataset both cover it, but
+both sit behind paid licences, so unlike everything above there is no free
+source for a fetcher to point at.
 
 ## Data
 
-`src/retireplan/data/` holds the series above plus a mortality table, each with
-a full provenance header once fetched. Read them before trusting a number.
-**The CSVs are gitignored, not committed** — third-party market data
-redistribution terms are unclear enough that this repo ships none of it.
-Rebuild them instead:
+**None of it is shipped.** `src/retireplan/data/` is empty on a fresh clone,
+and installing `retireplan` from this source tree gives you the engine and no
+data at all. That is deliberate, not an oversight — the engine raises rather
+than falling back to invented numbers:
+
+```
+ValueError: no market data CSVs found in .../retireplan/data
+```
+
+You fetch it once, locally, from the original sources:
 
 ```bash
 .venv/bin/python tools/fetch_market_data.py             # returns, inflation, credit, recession
 .venv/bin/python tools/build_mortality_csv.py --fetch   # ONS life tables, England & Wales
 ```
 
-Neither needs an API key, apart from the recession series — see
-[Data sources and asset classes](#data-sources-and-asset-classes) above for
-what that costs you.
+### Why it is fetched rather than committed
 
-A rebuilt file is not byte-identical to a previous one: CPI is revised after
-first publication and both Damodaran and Yahoo extend their series each year.
-Agreement to several decimal places on older years is expected; a wrong sign or
-order of magnitude means something upstream broke.
+The sources have genuinely different terms, and two of them do not grant
+redistribution at all. Rather than ship a mixture of files carrying five different
+sets of obligations — and quietly pass those obligations to everyone who clones the
+repo — none of it is committed and every clone fetches its own copy under
+whatever terms apply to that user.
+
+| Source | Series | Terms, as this repo reads them |
+|---|---|---|
+| Damodaran, NYU Stern | equities, bonds, small cap, T-Bills, Baa, real estate, gold, inflation | Published free for use, with **no licence attached**. Freely downloadable is not the same as redistributable; there is no grant to republish. |
+| Yahoo Finance | `short_corporate` (IGSB) | Their terms of service **restrict redistribution** of data taken from the service. The clearest case of the five. |
+| FRED, St Louis Fed | `recession` (USREC) | Built on NBER dates and US federal data, so the underlying facts are freely reusable, but FRED's own API terms attach conditions to bulk reuse. |
+| Jordà-Schularick-Taylor Macrohistory | `*_gdpw` | Free for research, **citation required** — an obligation that travels with the file and is easy to strip by vendoring it. |
+| ONS | mortality | **Open Government Licence v3.0** — this one could legitimately be shipped. It is fetched anyway, because `--fetch` follows ONS's "current" link and picks up the newest release rather than freezing a stale table. |
+
+Downloading all of this for your own modelling is exactly what every one of
+these publishers intends. Committing copies into a public repo is a different
+act, and only ONS clearly permits it. **This is how the terms read to us, not
+legal advice** — if you are using this commercially, check them yourself.
+
+**One trap worth knowing.** `pyproject.toml` packages `data/*.csv` by glob, so
+a wheel built *after* you have fetched will contain the CSVs. Building one for
+yourself is fine; publishing it is redistribution. Build before fetching, or
+clear `src/retireplan/data/` first, if you intend to share a wheel.
+
+### What you get, and checking it
+
+Each file carries a provenance header naming its exact source, method and
+fetch date — read it before trusting a number. A rebuilt file is not
+byte-identical to a previous one: CPI is revised after first publication and
+both Damodaran and Yahoo extend their series each year. Agreement to several
+decimal places on older years is expected; a wrong sign or order of magnitude
+means something upstream broke.
+
 `tools/validate_market_data.py` checks the result against independently
 published figures — Damodaran's own page, the UBS Global Investment Returns
 Yearbook, MSCI World — and prints the gap against each.

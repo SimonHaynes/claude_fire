@@ -8,9 +8,11 @@ of the same shape left over from a previous run, so the data directory never
 accumulates stale, differently-dated copies.
 
 These files are not committed to the repo (see `.gitignore` and
-`DATA_SETUP.md`) -- third-party redistribution terms for scraped market data
-are unclear, so every clone rebuilds its own copy from the original sources.
-This script automates that rebuild; nothing here is transcribed by hand.
+`DATA_SETUP.md`). Damodaran attaches no licence to his datasets and Yahoo's
+terms restrict redistribution, so downloading them for your own use is
+intended but republishing copies is not ours to do. Every clone rebuilds its
+own from the original sources instead; this script automates that rebuild, and
+nothing here is transcribed by hand.
 
 A FRED API key is OPTIONAL, and buys exactly one file: `us_recession_*.csv`.
 Set it as FRED_API_KEY in the environment or a `.env` file at the repo root

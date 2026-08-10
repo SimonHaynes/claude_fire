@@ -1,11 +1,25 @@
 # Data setup
 
-`src/retireplan/data/` is empty on a fresh clone. The engine needs real
-market and mortality data to simulate against, and this repo ships none of
-it: the market series are scraped from third parties whose redistribution
-terms are unclear, and shipping them without checking would be worse than
-not shipping them at all. Rebuild them locally instead, once, with the tools
-below.
+`src/retireplan/data/` is empty on a fresh clone. The engine needs real market
+and mortality data to simulate against, and this repo ships none of it.
+
+That is a licensing decision, not an oversight. Damodaran publishes his
+datasets free but attaches no licence, so there is no grant to republish them;
+Yahoo Finance's terms restrict redistribution outright; the JST Macrohistory
+database is free for research but requires citation, an obligation that
+disappears the moment the file is vendored into someone else's repo. Only the
+ONS tables (Open Government Licence v3.0) could clearly be shipped. Rather
+than commit a mixture of files carrying five different sets of obligations,
+every clone fetches its own copy under whatever terms apply to that user —
+which is the use all four publishers intend. README's [Data
+section](README.md#data) has the per-source table. This is how the terms read
+to us and is not legal advice; check them yourself for commercial use.
+
+Note that `pyproject.toml` packages `data/*.csv` by glob, so a wheel built
+after fetching will contain the CSVs. Building one for yourself is fine;
+publishing it is redistribution.
+
+Rebuild the data locally, once, with the tools below.
 
 ## Market data (equity, bonds, inflation, recession, corporate credit)
 
