@@ -209,6 +209,7 @@ def household_to_dict(household: Household) -> dict[str, Any]:
             "survivor_discretionary_factor": household.assumptions.survivor_discretionary_factor,
             "fiscal_drag": {
                 "inflation": household.assumptions.fiscal_drag.inflation,
+                "allowance_inflation": household.assumptions.fiscal_drag.allowance_inflation,
                 "income_freeze_until": household.assumptions.fiscal_drag.income_freeze_until.isoformat(),
                 "iht_freeze_until": household.assumptions.fiscal_drag.iht_freeze_until.isoformat(),
                 "never_uprated_freeze_forever":
@@ -244,6 +245,9 @@ def _assumptions_from_dict(raw: dict[str, Any]) -> Assumptions:
         survivor_discretionary_factor=raw.get("survivor_discretionary_factor", 0.75),
         fiscal_drag=FiscalDrag(
             inflation=drag.get("inflation", defaults.inflation),
+            allowance_inflation=drag.get(
+                "allowance_inflation", defaults.allowance_inflation
+            ),
             income_freeze_until=_date(
                 drag.get("income_freeze_until"), defaults.income_freeze_until
             ),

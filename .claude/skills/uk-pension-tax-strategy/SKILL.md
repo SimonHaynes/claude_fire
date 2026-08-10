@@ -245,10 +245,11 @@ tracks, so delay grows the tax-free cash in cash terms: on a £400,000 pot at 4%
 real, the routes release £104,000 (`PCLS`), £113,872 (`PHASED`) and £155,825
 (`UFPLS`). Quote the engine, not the direction.
 
-**The Lump Sum Allowance erodes only when `FiscalDrag.inflation` is set.** It
-defaults to 0.0, which silently assumes an indexed allowance and so flatters
-every delayed route — set it to the inflation assumption whenever the PCLS
-timing decision is live, or the comparison is rigged toward waiting.
+**The Lump Sum Allowance erodes by default** — `FiscalDrag.allowance_inflation`,
+2%/yr, because the allowance has no uprating provision at all. Delay therefore
+costs real money in every comparison, which is the honest starting point. The
+*announced* freezes are separate and still opt-in: set `FiscalDrag.inflation`
+too whenever income-tax drag matters to the answer.
 
 **For a specific one-off — "£50,000 of cash now" — use
 `Scenario.pension_lump_sums`**: a dated `PensionLumpSum(on, person, amount)`,

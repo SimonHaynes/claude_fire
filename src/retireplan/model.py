@@ -278,8 +278,31 @@ class FiscalDrag:
     """
 
     inflation: float = 0.0
-    """Assumed annual inflation. Only ever used to erode frozen thresholds --
-    every other figure in the engine is already in real terms."""
+    """Assumed annual inflation for thresholds under an *announced* freeze --
+    income tax, NI and the IHT bands. Only ever used to erode them; every
+    other figure in the engine is already in real terms.
+
+    Defaults to zero so that the drag on announced freezes stays opt-in and
+    attributable: those have published end dates, after which uprating
+    resumes and the erosion stops. `allowance_inflation` governs the
+    allowances that have no such date and does not default to zero."""
+
+    allowance_inflation: float = 0.02
+    """Annual inflation applied to allowances with **no uprating mechanism at
+    all** -- the Lump Sum Allowance, the ISA subscription limit, the CGT
+    exempt amount, the dividend allowance.
+
+    Non-zero by default, unlike `inflation`, because these are not frozen
+    pending a review: no provision to raise them exists, so there is no date
+    at which they start rising again. Holding them constant in real terms
+    would assume an indexation that is not in the legislation, which is not a
+    neutral default -- it quietly hands a plan an allowance nobody legislated
+    and rigs any take-the-cash-now-or-later comparison toward waiting.
+
+    2% is the Bank of England target, matching `standard-assumptions`. Set it
+    to zero to recover the old behaviour of an implicitly indexed allowance.
+    Ignored when `never_uprated_freeze_forever` is False, where these track
+    the income freeze on `inflation` instead."""
 
     income_freeze_until: date = date(2031, 4, 6)
     """Announced end of the income tax and NI threshold freeze. Extended three

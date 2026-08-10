@@ -53,14 +53,30 @@ class TestRealTermsFactor:
 
 
 class TestDefaultIsOldBehaviour:
-    def test_default_fiscal_drag_has_zero_inflation(self):
-        # The whole change has to be opt-in, or no number that moves is
-        # attributable to it.
+    def test_drag_on_announced_freezes_is_opt_in(self):
+        # Income tax, NI and the IHT bands have published freeze end dates, so
+        # eroding them stays opt-in and attributable.
         assert Assumptions().fiscal_drag.inflation == 0.0
 
-    def test_zero_inflation_reuses_one_tax_system(self, household):
-        plan = plan_with(0.0, household)
+    def test_never_uprated_allowances_erode_by_default(self):
+        """The Lump Sum Allowance and friends have no uprating provision at
+        all, so holding them constant in real terms would assume an indexation
+        that does not exist -- not a neutral default."""
+        assert Assumptions().fiscal_drag.allowance_inflation == 0.02
+
+    def test_switching_both_off_reuses_one_tax_system(self, household):
+        plan = plan_with(0.0, household, allowance_inflation=0.0)
         assert all(y.tax is UK for y in plan.years)
+
+    def test_the_lump_sum_allowance_erodes_with_no_inflation_set(self, household):
+        plan = plan_with(0.0, household)
+        assert plan.years[20].tax.lump_sum_allowance == pytest.approx(
+            UK.lump_sum_allowance / 1.02**20
+        )
+        # ...while the announced freezes are left alone.
+        assert plan.years[20].tax.income_tax_schedule.bands[0].upper == pytest.approx(
+            UK.income_tax_schedule.bands[0].upper
+        )
 
 
 class TestIncomeThresholdsErode:

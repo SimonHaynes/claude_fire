@@ -499,10 +499,14 @@ class TestCrystallisation:
         assert ufpls > phased
         assert ufpls > 400_000 * 0.25
 
-    def test_delay_buys_nothing_once_the_allowance_binds(self):
+    def test_delay_costs_real_money_once_the_allowance_binds(self):
+        """Above the cap, waiting cannot grow the entitlement — and the
+        allowance is frozen in cash terms, so waiting actively shrinks it."""
         big = growing_household(2_000_000.0)
-        assert tax_free_released(big, PensionAccess.PCLS) == pytest.approx(UK.lump_sum_allowance)
-        assert tax_free_released(big, PensionAccess.PHASED) == pytest.approx(UK.lump_sum_allowance)
+        at_once = tax_free_released(big, PensionAccess.PCLS)
+        phased = tax_free_released(big, PensionAccess.PHASED)
+        assert at_once == pytest.approx(UK.lump_sum_allowance)
+        assert phased < at_once
 
     def test_no_route_ever_exceeds_the_lump_sum_allowance(self):
         for access in PensionAccess:

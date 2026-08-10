@@ -102,9 +102,23 @@ State Pension is deliberately *not* dragged — it is triple-locked. Defaults to
 resume uprating when the freeze ends, so they stop losing real value; the
 never-uprated allowances carry on shrinking forever. Over 30 years at 2%, the
 personal allowance keeps 91% of its real value and the Lump Sum Allowance keeps
-55%. Any comparison of taking tax-free cash now against later is rigged toward
-waiting unless `inflation` is set, because a default of 0.0 silently assumes an
-indexed allowance.
+55%.
+
+**They are now two separate rates, and only one defaults to zero.**
+`inflation` covers thresholds under an *announced* freeze — income tax, NI, IHT
+bands — and stays opt-in, because those have published end dates and the
+erosion stops there. `allowance_inflation` covers the Lump Sum Allowance, the
+ISA limit, the CGT exempt amount and the dividend allowance, and **defaults to
+2%**: no provision to raise them exists, so holding them constant in real terms
+assumed an indexation that is not in the legislation. That was not a neutral
+default — it handed every plan an allowance nobody legislated and rigged any
+take-the-cash-now-against-later comparison toward waiting.
+
+*This moves numbers on every plan.* On the sample client, terminal wealth falls
+0.68% and lifetime tax rises 3.2%. The effect is small per year and compounds:
+Bed-and-ISA now takes six years to migrate a £100,000 GIA rather than five,
+because each year's subscription limit is worth less than the last. Set
+`allowance_inflation=0.0` to recover the old behaviour.
 
 *The freeze dates are the one part of this that moves by Budget rather than by
 legislation, and both have now been extended twice.* `income_freeze_until` sat

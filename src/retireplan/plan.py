@@ -352,20 +352,25 @@ def _tax_by_year(
     than crashing.
     """
     scaler = getattr(tax, "with_thresholds_scaled", None)
-    if drag.inflation <= 0 or scaler is None:
+    never_uprated_erodes = drag.never_uprated_freeze_forever and drag.allowance_inflation > 0
+    if scaler is None or (drag.inflation <= 0 and not never_uprated_erodes):
         return [tax] * (last_index + 1)
 
     income_freeze_years = max(0.0, (drag.income_freeze_until - as_of).days / 365.25)
 
     by_index = []
     for i in range(last_index + 1):
-        # Thresholds stop eroding when the announced freeze ends and uprating
-        # resumes; allowances with no uprating mechanism keep going.
+        # Two clocks. Announced freezes stop eroding when uprating resumes;
+        # allowances with no uprating provision have no such date, so they run
+        # on their own rate for the whole plan.
         income_years = min(float(i), income_freeze_years)
-        allowance_years = float(i) if drag.never_uprated_freeze_forever else income_years
+        allowance_factor = (
+            real_terms_factor(drag.allowance_inflation, float(i))
+            if drag.never_uprated_freeze_forever
+            else real_terms_factor(drag.inflation, income_years)
+        )
         by_index.append(scaler(
-            real_terms_factor(drag.inflation, income_years),
-            real_terms_factor(drag.inflation, allowance_years),
+            real_terms_factor(drag.inflation, income_years), allowance_factor
         ))
     return by_index
 

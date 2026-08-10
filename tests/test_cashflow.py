@@ -445,10 +445,12 @@ class TestBedAndISA:
         years = projection.years
         assert years[0].balances["ISA"] == pytest.approx(20_000, abs=1.0)
         assert years[0].balances["GIA"] == pytest.approx(79_868.75, abs=1.0)
-        # £20,000/year moves across; five years is enough to move it all
-        # (dividend tax along the way trims the total slightly).
-        assert years[4].balances["GIA"] == pytest.approx(0.0, abs=1.0)
-        assert years[4].balances["ISA"] == pytest.approx(99_685.69, abs=1.0)
+        # Six years, not five: the ISA subscription limit has no uprating
+        # mechanism and erodes in real terms by default, so each year moves a
+        # little less across. Dividend tax along the way trims the total too.
+        assert years[4].balances["GIA"] == pytest.approx(3_714.18, abs=1.0)
+        assert years[5].balances["GIA"] == pytest.approx(0.0, abs=1.0)
+        assert years[5].balances["ISA"] == pytest.approx(99_677.88, abs=1.0)
 
     def test_migration_pays_cgt_on_a_real_embedded_gain(self, flat_market):
         household = Household(
