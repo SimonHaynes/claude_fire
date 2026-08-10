@@ -33,10 +33,6 @@ DATA_DIR = Path(__file__).parent / "data"
 YearReturns = Mapping[str, float]
 
 
-# ---------------------------------------------------------------------------
-# Return models
-# ---------------------------------------------------------------------------
-
 @runtime_checkable
 class ReturnModel(Protocol):
     """How a single asset converts a year of market data into a real return.
@@ -262,10 +258,6 @@ class Blend:
         return frozenset().union(*(m.series_keys() for m, _ in self.parts)) if self.parts else frozenset()
 
 
-# ---------------------------------------------------------------------------
-# Historical data
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class MarketData:
     """Real annual returns by year and series, loaded from the data CSVs."""
@@ -314,10 +306,6 @@ class MarketData:
     def series(self, key: str) -> dict[int, float]:
         return {y: row[key] for y, row in sorted(self.by_year.items()) if key in row}
 
-
-# ---------------------------------------------------------------------------
-# Sampling
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class BlockBootstrap:

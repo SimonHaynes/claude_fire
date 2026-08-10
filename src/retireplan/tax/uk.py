@@ -1,19 +1,12 @@
-"""UK income tax, National Insurance, and pension access rules.
+"""UK income tax, NI, CGT, dividend tax and pension access rules. IHT lives in
+`tax/iht.py`; self-employed Class 2/4 NI is not modelled.
 
-VERIFY BEFORE USE. The income tax, NI, CGT and dividend thresholds below were
-first entered for 2025/26 and are frozen under current policy through
-2027/28, so they are still the correct 2026/27 figures (`tax_year` reflects
-that) — but a freeze is a policy choice, not a law of nature: do not take it
-on trust from this comment, re-check gov.uk each tax year, and always before
-showing output to anyone. `FULL_STATE_PENSION_ANNUAL` is *not* frozen — it
-rises each April under the triple lock — and has not been re-verified past
-its original 2025/26 value; treat any report figure derived from it as a
-lower bound, not a current one, until it is checked.
-
-Scope: income tax, Class 1 employee NI, State Pension, and the Normal Minimum
-Pension Age. Dividend tax, Capital Gains Tax and Inheritance Tax are not
-modelled — General Investment Accounts and estate planning will be wrong until
-they are.
+VERIFY BEFORE USE. The income tax, NI, CGT and dividend thresholds were entered
+for 2025/26 and are frozen under current policy through 2027/28, so they remain
+the correct 2026/27 figures — but a freeze is a policy choice, not a law of
+nature. `FULL_STATE_PENSION_ANNUAL` is *not* frozen: it rises each April under
+the triple lock and has not been re-verified past 2025/26, so treat any figure
+derived from it as a lower bound until it is checked.
 """
 from __future__ import annotations
 
@@ -28,15 +21,10 @@ BASIC_RATE_LIMIT = 50_270.0
 TAPER_START = 100_000.0
 ADDITIONAL_RATE_START = 125_140.0
 
-# The effective marginal rates a UK taxpayer actually faces on total income.
-#
-# The 60% band between £100,000 and £125,140 is not a legislated rate: it is
-# the personal allowance being withdrawn at £1 for every £2 earned, so each
-# extra £1 is taxed at 40p and drags a further 50p of previously-untaxed
-# allowance into the 40% band (40p + 20p = 60p). Expressing it directly is
-# both simpler and more accurate than reconstructing it from a tapered
-# allowance — an earlier version of this engine did the latter and got the
-# basic-rate band width wrong for anyone inside the taper.
+# Effective marginal rates, not legislated ones: the 60% band above £100,000 is
+# the personal allowance withdrawing at £1 per £2 earned (40p + 20p). Stating it
+# directly beats reconstructing it from a tapered allowance, which an earlier
+# version did — and got the basic-rate band width wrong inside the taper.
 UK_INCOME_TAX_2025_26 = RateSchedule((
     Band(PERSONAL_ALLOWANCE, 0.00),
     Band(BASIC_RATE_LIMIT, 0.20),
@@ -45,7 +33,6 @@ UK_INCOME_TAX_2025_26 = RateSchedule((
     Band(INF, 0.45),
 ))
 
-# Class 1 employee NI. Self-employed Class 2/4 are not modelled.
 UK_NATIONAL_INSURANCE_2025_26 = RateSchedule((
     Band(PERSONAL_ALLOWANCE, 0.00),   # primary threshold, currently aligned with the PA
     Band(BASIC_RATE_LIMIT, 0.08),     # upper earnings limit
@@ -54,53 +41,43 @@ UK_NATIONAL_INSURANCE_2025_26 = RateSchedule((
 
 FULL_STATE_PENSION_ANNUAL = 11_973.0
 
-# Normal Minimum Pension Age. The rise from 55 to 57 is already legislated for
-# 6 April 2028, so this engine uses 57 even for earlier modelled dates: any
-# plan being written today will be lived under the new rule, and assuming 55
-# would quietly manufacture a bridge that will not exist.
+# Normal Minimum Pension Age. 57 even for earlier modelled dates: the rise from
+# 55 is legislated for 6 April 2028, and any plan written today will be lived
+# under it, so assuming 55 would manufacture a bridge that will not exist.
 PENSION_ACCESS_AGE = 57
 
-# Pension Commencement Lump Sum: 25% of the pot may be taken tax-free, but
-# capped by the Lump Sum Allowance, which is 25% of the old Lifetime Allowance
-# and did not rise with it. Anyone with a pot above ~£1.073m is capped, so the
-# "25% tax-free" rule of thumb quietly stops being true exactly for the people
-# most likely to rely on it.
+# The PCLS is 25% of the pot, capped by a Lump Sum Allowance that did not rise
+# with the old Lifetime Allowance: above a pot of ~£1.073m the "25% tax-free"
+# rule of thumb stops being true, exactly for those most likely to rely on it.
 PCLS_FRACTION = 0.25
 LUMP_SUM_ALLOWANCE = 268_275.0
 
-# Capital Gains Tax on a General Investment Account. Since the 30 Oct 2024
-# Budget, shares carry the same two rates as residential property -- the
-# separate, lower "shares" rate no longer exists. There is no third
-# (additional-rate) CGT band: only whether the taxpayer's *other* income
-# already fills the basic-rate band decides which of the two rates applies.
+# Since the 30 Oct 2024 Budget shares carry the same two rates as residential
+# property. There is no additional-rate CGT band: which of the two applies turns
+# only on whether the taxpayer's other income already fills the basic-rate band.
 CGT_ANNUAL_EXEMPT_AMOUNT = 3_000.0
 CGT_BASIC_RATE = 0.18
 CGT_HIGHER_RATE = 0.24
 
-# Dividend tax, for the assumed distribution yield on a GIA. Three bands,
-# mirroring income tax's, on top of a flat allowance that -- like the CGT
-# exempt amount -- is not stacked with the income personal allowance.
+# The dividend allowance, like the CGT exempt amount, does not stack with the
+# income personal allowance.
 DIVIDEND_ALLOWANCE = 500.0
 DIVIDEND_BASIC_RATE = 0.0875
 DIVIDEND_HIGHER_RATE = 0.3375
 DIVIDEND_ADDITIONAL_RATE = 0.3935
 
-# Assumed annual distribution yield on a GIA invested in a global tracker,
-# taxed as dividend income each year (and reinvested, which raises cost basis
-# by the same amount) even though nothing left the account. A total-return
-# index's quoted return already includes this; splitting it out is what makes
-# the dividend tax visible without changing the assumed total return. This is
-# a modelling assumption, not a client-stated fact -- roughly the long-run
-# average for a global equity index, but a real fund's actual distribution
-# varies by year and by which index is held.
+# Assumed distribution yield on a global tracker held in a GIA, taxed yearly as
+# dividend income and reinvested (which raises cost basis) though nothing leaves
+# the account. A total-return index already includes it; splitting it out makes
+# the tax visible without changing the assumed total return. A modelling
+# assumption, not a client fact — a real fund's distribution varies by year.
 GIA_DIVIDEND_YIELD = 0.02
 
-#: When these figures were last checked against gov.uk. This is a date, not a
-#: comment, because "verify the rates" written in prose is a rule everyone
-#: agrees with and nobody executes -- `simulation.run_monte_carlo` warns when
-#: this goes stale, so skipping the check has to be a decision rather than an
-#: oversight. Move it only when you have actually re-checked, and say so.
 VERIFIED_ON = date(2026, 8, 6)
+"""When these figures were last checked against gov.uk. A date rather than a
+prose reminder, because `simulation.run_monte_carlo` warns when it goes stale —
+which makes skipping the check a decision rather than an oversight. Move it only
+after actually re-checking."""
 
 
 @dataclass(frozen=True)

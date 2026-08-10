@@ -80,10 +80,6 @@ def _fred_observations(series_id: str, api_key: str, start: str) -> list[dict]:
     return data["observations"]
 
 
-# ---------------------------------------------------------------------------
-# Damodaran: nominal S&P 500 and 10-year Treasury total returns
-# ---------------------------------------------------------------------------
-
 def fetch_damodaran_nominal() -> dict[int, tuple[float, float]]:
     """Returns {year: (sp500_nominal, tbond10_nominal)}, as decimals."""
     url = "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html"
@@ -111,10 +107,6 @@ def fetch_damodaran_nominal() -> dict[int, tuple[float, float]]:
         )
     return out
 
-
-# ---------------------------------------------------------------------------
-# FRED: CPI (inflation) and NBER recession indicator
-# ---------------------------------------------------------------------------
 
 def fetch_cpi_inflation(api_key: str) -> dict[int, float]:
     """Mean of the twelve monthly year-over-year CPIAUCNS rates, per calendar year."""
@@ -152,10 +144,6 @@ def fetch_recession_fraction(api_key: str) -> dict[int, float]:
     return {year: sum(vals) / len(vals) for year, vals in by_year.items()}
 
 
-# ---------------------------------------------------------------------------
-# Yahoo Finance: IGSB monthly adjusted close -> December-to-December returns
-# ---------------------------------------------------------------------------
-
 def fetch_igsb_nominal() -> dict[int, float]:
     url = (
         "https://query1.finance.yahoo.com/v8/finance/chart/IGSB"
@@ -182,17 +170,12 @@ def fetch_igsb_nominal() -> dict[int, float]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Assembly and CSV writing
-# ---------------------------------------------------------------------------
-
 def real_return(nominal: float, inflation: float) -> float:
     return (1 + nominal) / (1 + inflation) - 1
 
 
 def write_csv(path: Path, header: str, columns: list[str], rows: dict[int, tuple]) -> None:
-    # Gitignored and therefore untracked, so a fresh clone has no data/
-    # directory at all -- not just an empty one.
+    # Gitignored, so a fresh clone has no data/ directory at all.
     path.parent.mkdir(parents=True, exist_ok=True)
     for stale in path.parent.glob(f"{path.stem.split('_')[0]}_{path.stem.split('_')[1]}_*.csv"):
         stale.unlink()

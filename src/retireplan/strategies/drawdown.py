@@ -201,11 +201,10 @@ class DrawdownStrategy(ABC):
         """
 
 
-#: Below this, an unfunded amount is floating-point dust rather than a real
-#: gap. One penny: small enough that nothing economically meaningful is
-#: swallowed, large enough to absorb the residue of several gross-up
-#: inversions compounding.
 SHORTFALL_TOLERANCE = 0.01
+"""Below a penny an unfunded amount is floating-point dust, not a gap: small
+enough to swallow nothing economically meaningful, large enough to absorb the
+residue of several gross-up inversions compounding."""
 
 
 def _draw_isa_gia_then_pensions(
@@ -258,19 +257,9 @@ def _draw_isa_gia_then_pensions(
                 continue  # below the Normal Minimum Pension Age
             need -= _draw_dc_pension(person, slots, need, portfolio, taxable_income, ctx, result)
 
-    # Anything under a penny is arithmetic residue, not a funding gap.
-    #
-    # `need` is chased down through several inversions -- a pension gross-up,
-    # a CGT gross-up, a bisection on the withdrawal rule -- and each leaves a
-    # little floating-point dust. A residue of 3.6e-12 was enough to mark a
-    # year as unfunded, and `Projection.succeeded` tests `unmet > 0`, so a
-    # household sitting on £2.5m was recorded as having failed its plan.
-    #
-    # It stayed invisible while tax thresholds were round numbers, because the
-    # inversions happened to land exactly. Scaling them for fiscal drag made
-    # the residue appear, and the resulting success rates were not merely
-    # wrong but chaotic -- 2% inflation scored 65% while 1% scored 92%, and
-    # both were reproducible. A number that moves like that is not a finding.
+    # `need` is chased through several inversions, each leaving dust, and
+    # `Projection.succeeded` tests `unmet > 0`: a residue of 3.6e-12 once marked
+    # a £2.5m household as having failed its plan.
     return max(0.0, need) if need > SHORTFALL_TOLERANCE else 0.0
 
 
@@ -360,10 +349,8 @@ class TaxEfficientOrder(DrawdownStrategy):
     def end_of_year(self, portfolio, taxable_income, ctx):
         if not (self.recycle_surplus and ctx.is_retired):
             return
-        # Thrown away, not merged into the year's real DrawResult: recycling
-        # withdrawals were never surfaced in dc_withdrawn_gross even before
-        # UFPLS existed -- this preserves that, rather than quietly starting
-        # to report a number nothing previously accounted for.
+        # Discarded, not merged into the year's real DrawResult: recycling
+        # withdrawals have never been surfaced in `dc_withdrawn_gross`.
         result = DrawResult()
         for person, slots in ctx.dc_slots_by_person.items():
             if not ctx.dc_accessible_by_person.get(person, False):
@@ -371,10 +358,8 @@ class TaxEfficientOrder(DrawdownStrategy):
             if not ctx.isa_slots_by_person.get(person, ()):
                 continue
             already = taxable_income.get(person, 0.0)
-            # Bounded by the *household's* remaining ISA capacity, not just
-            # this person's own -- the destination can spill to a spouse's
-            # ISA (see `credit_isa`), so the amount worth drawing extra
-            # pension for should reflect that shared capacity too.
+            # Bounded by the *household's* remaining ISA capacity: the
+            # destination can spill to a spouse's ISA (see `credit_isa`).
             cap = min(self.isa_annual_limit, ctx.tax.isa_annual_allowance)
             total_isa_headroom = sum(
                 max(0.0, cap - ctx.isa_headroom_used.get(recipient, 0.0))
@@ -384,16 +369,12 @@ class TaxEfficientOrder(DrawdownStrategy):
             headroom = min(self.fill_to - already, total_isa_headroom)
             if headroom <= 0 or portfolio.sum_of(slots) <= 0:
                 continue
-            # `need=headroom` is a deliberately generous stand-in: there is
-            # no net-income target here, only a gross/taxable ceiling, and
-            # net is never more than gross, so it never binds ahead of
-            # `taxable_cap` -- the cap below is what actually limits this.
+            # `need=headroom` is a generous stand-in: there is no net-income
+            # target here, and net never exceeds gross, so `taxable_cap` binds.
             net = _draw_dc_pension(
                 person, slots, headroom, portfolio, taxable_income, ctx, result,
                 taxable_cap=headroom,
             )
-            # Same IHT treatment, no income tax for the heirs, wherever it
-            # lands -- person's own ISA first, a spouse's if that's full.
             credit_isa(net, person, ctx.isa_slots_by_person, ctx.tax, portfolio, ctx.isa_headroom_used)
 
 
@@ -510,8 +491,7 @@ class ThreeBucketStrategy(DrawdownStrategy):
         return result
 
     def end_of_year(self, portfolio, taxable_income, ctx):
-        # The bond bucket earns real bond returns -- an actual holding, not
-        # a fixed-rate reserve dressed up as one.
+        # An actual bond holding, not a fixed-rate reserve dressed up as one.
         portfolio.balances[ctx.bond_slot] *= 1.0 + ctx.bond_return
         if not ctx.is_retired:
             return
@@ -525,10 +505,10 @@ class ThreeBucketStrategy(DrawdownStrategy):
             self.seeded = True
             return
 
-        # Bucket 1 refilled from Bucket 2 every year, unconditionally --
-        # bonds are the buffer for near-term spending, not a timing call.
-        # If bonds themselves are short, top up straight from equities
-        # rather than leave the one bucket meant to never run dry empty.
+        # Bucket 1 refills from Bucket 2 unconditionally: bonds are the buffer
+        # for near-term spending, not a timing call. Equities top up directly
+        # when bonds are short, rather than leaving the bucket meant never to
+        # run dry empty.
         cash_shortfall = cash_target - portfolio.balances[ctx.cash_slot]
         if cash_shortfall > 0:
             from_bonds = portfolio.draw_pro_rata((ctx.bond_slot,), cash_shortfall)
@@ -537,9 +517,8 @@ class ThreeBucketStrategy(DrawdownStrategy):
             if cash_shortfall > 0:
                 portfolio.balances[ctx.cash_slot] += portfolio.draw_pro_rata(ctx.isa_slots, cash_shortfall)
 
-        # Bucket 2 refilled from Bucket 3 only in years equities are up --
-        # the actual "don't sell stocks in a crash" rule this strategy is
-        # known for.
+        # Bucket 2 refills from Bucket 3 only when equities are up: the
+        # "don't sell stocks in a crash" rule this strategy is known for.
         bond_shortfall = bond_target - portfolio.balances[ctx.bond_slot]
         if ctx.growth_return >= 0 and bond_shortfall > 0:
             portfolio.balances[ctx.bond_slot] += portfolio.draw_pro_rata(ctx.isa_slots, bond_shortfall)

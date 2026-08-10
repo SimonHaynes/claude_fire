@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence
 
 from .market import YearReturns
@@ -63,27 +63,21 @@ class YearResult:
     """What the household actually paid towards care this year, after the
     means test."""
     care_state_funded: float = 0.0
-    """What the local authority met. Not a shortfall: nobody in England is
-    left without essential care for lack of money, so this is a real outcome
-    rather than a plan failure -- but it means the capital is gone, which is
-    why it is reported rather than absorbed silently."""
+    """What the local authority met. Not a shortfall — nobody in England goes
+    without essential care for lack of money — but it means the capital is gone,
+    so it is reported rather than absorbed silently."""
     ufpls_tax_free_taken: float = 0.0
-    """Tax-free cash generated this year by UFPLS withdrawals -- the 25%
-    portion of every payment, until the Lump Sum Allowance runs out. See
-    `pcls_taken` for the equivalent under `PensionAccess.PCLS`."""
+    """The 25% tax-free portion of this year's UFPLS payments, until the Lump
+    Sum Allowance runs out. `pcls_taken` is the `PensionAccess.PCLS` equivalent."""
     pension_lump_sum_taken: float = 0.0
-    """Gross amount taken this year via `Scenario.pension_lump_sums` -- a
-    one-off, dated, partial-crystallisation-style withdrawal, independent
-    of the scenario's ongoing `pension_access` mode."""
+    """Gross taken via `Scenario.pension_lump_sums`, independent of the
+    scenario's ongoing `pension_access` mode."""
     income_annuity_premium: float = 0.0
-    """Gross amount drawn from a DC pension this year to buy a
-    `Scenario.income_annuity` -- a one-off event, at most once per person,
-    at first pension access."""
+    """Gross drawn from a DC pension to buy a `Scenario.income_annuity`: once
+    per person, at first access."""
     income_annuity_income: float = 0.0
-    """This year's guaranteed income from a previously-bought
-    `Scenario.income_annuity`, already folded into taxable income and hence
-    into `tax_paid` -- reported separately because it is guaranteed rather
-    than drawn, unlike the rest of `gross_income`."""
+    """This year's guaranteed annuity income. Already inside `tax_paid` and
+    `gross_income`; reported separately because it is guaranteed, not drawn."""
 
 
     @property
@@ -120,28 +114,13 @@ def _returns_for(plan: Plan, path: Sequence[YearReturns], i: int) -> YearReturns
     return base
 
 
-def _dc_accessible(year: PlanYear, slots: SlotMaps, person: str) -> bool:
-    """Whether `person` can draw the pension slots now keyed to them.
-
-    An inherited pot is drawable at any age -- a beneficiary is not held to
-    the deceased's access age, and is not held to their own either. Without
-    the override a survivor would inherit a pension they could not touch for
-    years, which is simply not the rule.
-    """
-    if person in slots.dc_accessible_override:
-        return True
-    return year.dc_accessible_by_person.get(person, False)
-
-
 def _dead_year(plan: Plan, year: PlanYear, portfolio: Portfolio) -> YearResult:
     """A plan-year after the last death: no flows, balances frozen.
 
-    Emitted rather than skipped so every trial has the same number of years
-    and the simulation can still reduce fixed-size arrays across trials that
-    ended at different times. `unmet_shortfall` is zero, so a household that
-    no longer exists cannot fail to fund itself -- success then means "never
-    failed while someone was alive", which is what it should always have
-    meant.
+    Emitted rather than skipped so every trial has the same number of years and
+    the simulation can reduce fixed-size arrays across trials that ended at
+    different times. `unmet_shortfall` is zero, so success means "never failed
+    while someone was alive".
     """
     balances = {plan.slot_names[s]: b for s, b in enumerate(portfolio.balances)}
     return YearResult(
@@ -157,48 +136,46 @@ def _dead_year(plan: Plan, year: PlanYear, portfolio: Portfolio) -> YearResult:
 
 
 
-def _assessable_capital(person: str, plan: Plan, slots: SlotMaps, portfolio: Portfolio) -> float:
+def _assessable_capital(person: str, accounts: _Accounts) -> float:
     """What a local authority would count as this person's own capital.
 
-    Their ISA, GIA and pension, plus an equal share of the household cash.
-    **The home is excluded entirely** -- it is disregarded while a spouse,
-    partner or dependent relative still lives there, and this engine only
-    charges care while someone is alive, so the disregard always applies. A
-    household where nobody is left living in the home would see it assessed,
-    which is exactly the case the will-trust structures in the
-    `legal-and-trust-structuring` skill are designed for, and which this does
-    not attempt to model.
-
-    Pension pots are counted, which is the cautious reading: a local authority
-    can take account of a pot that could be drawn, and treating it as
-    invisible would flatter every result here.
+    Their ISA, GIA and pension, plus an equal share of the household cash. The
+    home is excluded entirely: it is disregarded while a spouse, partner or
+    dependent relative lives there, and care is only ever charged here while
+    someone is alive. The case where nobody is left in the home is what the
+    will-trust structures in `legal-and-trust-structuring` address, and is not
+    modelled. Pension pots are counted — the cautious reading, since a local
+    authority may take account of a pot that could be drawn.
     """
     owned = (
-        slots.isa_slots_by_person.get(person, ())
-        + slots.gia_slots_by_person.get(person, ())
-        + slots.dc_slots_by_person.get(person, ())
+        accounts.slots.isa_slots_by_person.get(person, ())
+        + accounts.slots.gia_slots_by_person.get(person, ())
+        + accounts.slots.dc_slots_by_person.get(person, ())
     )
-    people = len(slots.isa_slots_by_person) or 1
-    return portfolio.sum_of(owned) + portfolio.balances[plan.cash_slot] / people
+    people = len(accounts.slots.isa_slots_by_person) or 1
+    return (
+        accounts.portfolio.sum_of(owned)
+        + accounts.portfolio.balances[accounts.plan.cash_slot] / people
+    )
 
 
 def _apply_care(
+    accounts: _Accounts,
     year: PlanYear,
     alive: frozenset[str],
     care_needs: list,
-    plan: Plan,
-    slots: SlotMaps,
-    portfolio: Portfolio,
     care_plan,
     annuity_bought: set[str],
 ) -> tuple[PlanYear, float, float]:
-    """Charge this year's care, means-tested per person.
+    """Charge this year's care, means-tested per person against their own
+    capital — which is why who enters care first can matter more to an estate
+    than how much the household has between them.
 
-    Returns the adjusted year plus what the household paid and what the state
-    met. Care is added to `one_off` rather than to `essential` so that no
-    withdrawal rule can cut it and `CashBondLadder` does not size its bucket
-    against it -- care can treble essential spending, and a ladder reading
-    that would pull years of care fees into cash in exactly the worst years.
+    Returns the adjusted year, what the household paid and what the state met.
+    Care lands in `one_off` rather than `essential` so no withdrawal rule can
+    cut it and `CashBondLadder` does not size its bucket against it: care can
+    treble essential spending, and a ladder reading that would pull years of
+    fees into cash in exactly the worst years.
     """
     if care_plan is None:
         return year, 0.0, 0.0
@@ -217,17 +194,16 @@ def _apply_care(
 
         cost = care_plan.model.annual_cost
         annuity = care_plan.annuity
-        if annuity is not None and annuity.enabled and need.person not in annuity_bought:
-            # Bought once, at the point of entering care: converts an
-            # open-ended liability into a known one-off, which is the whole
-            # reason it protects an estate.
-            premiums += annuity.premium(cost)
-            annuity_bought.add(need.person)
         if annuity is not None and annuity.enabled:
-            # The annuity pays the fees direct to the provider, tax-free.
-            continue
+            if need.person not in annuity_bought:
+                # Bought at the point of entering care, converting an open-ended
+                # liability into a known one-off — the whole reason it protects
+                # an estate.
+                premiums += annuity.premium(cost)
+                annuity_bought.add(need.person)
+            continue  # the annuity pays the fees direct to the provider, tax-free
 
-        capital = _assessable_capital(need.person, plan, slots, portfolio)
+        capital = _assessable_capital(need.person, accounts)
         income = year.taxable_income_by_person.get(need.person, 0.0)
         mine, theirs = care_plan.means_test.contribution(cost, capital, income)
         household_pays += mine
@@ -246,95 +222,255 @@ def _apply_care(
     return adjusted, household_pays, state_pays
 
 
-def _invest_for_person(
-    amount: float, person: str, portfolio: Portfolio, plan: Plan, slots: SlotMaps,
-    tax: TaxSystem, isa_headroom_used: dict[str, float],
-) -> None:
-    """Route `amount` into an ISA -- `person`'s own first, then a spouse's
-    if theirs is full (see `credit_isa`) -- then `person`'s own GIA for
-    whatever is left, falling back to cash only if nobody in the household
-    has an ISA and `person` has no GIA either. Shared by `_invest_surplus`
-    (split across the household first) and anything that is unambiguously
-    one person's money already -- a PCLS or a DB pension lump sum belongs to
-    the person it came from, not the household in general, and has no more
-    reason to sit idle in cash than ordinary income surplus does.
+@dataclass
+class _Accounts:
+    """The handles every money-moving step of a plan-year needs.
+
+    Rebuilt each year, since `slots` and `tax` are year-variant and the ISA
+    allowance is annual. `tax_free_cash_taken` is passed in instead, because
+    the Lump Sum Allowance is a lifetime limit that PCLS, UFPLS and one-off
+    lump sums all draw against.
     """
-    if amount <= 0:
-        return
-    remainder = credit_isa(amount, person, slots.isa_slots_by_person, tax, portfolio, isa_headroom_used)
-    gia_slots = slots.gia_slots_by_person.get(person, ())
-    if gia_slots and remainder > 0:
-        portfolio.balances[gia_slots[0]] += remainder
-        portfolio.cost_basis[gia_slots[0]] += remainder  # a fresh purchase: full basis
-        remainder = 0.0
-    if remainder > 0:
-        portfolio.balances[plan.cash_slot] += remainder
+
+    plan: Plan
+    slots: SlotMaps
+    tax: TaxSystem
+    portfolio: Portfolio
+    tax_free_cash_taken: dict[str, float]
+    isa_headroom_used: dict[str, float] = field(default_factory=dict)
+
+    def invest_for(self, person: str, amount: float) -> None:
+        """Shelter `amount` as `person`'s own money: their ISA first, a spouse's
+        if theirs is full (see `credit_isa`), then their own GIA, and cash only
+        if they have neither. A PCLS or a DB lump sum belongs to the person it
+        came from, and has no more reason to sit idle in cash than surplus
+        income does.
+        """
+        if amount <= 0:
+            return
+        remainder = credit_isa(
+            amount, person, self.slots.isa_slots_by_person, self.tax,
+            self.portfolio, self.isa_headroom_used,
+        )
+        gia_slots = self.slots.gia_slots_by_person.get(person, ())
+        if gia_slots and remainder > 0:
+            self.portfolio.balances[gia_slots[0]] += remainder
+            self.portfolio.cost_basis[gia_slots[0]] += remainder  # fresh purchase: full basis
+            remainder = 0.0
+        if remainder > 0:
+            self.portfolio.balances[self.plan.cash_slot] += remainder
+
+    def invest_surplus(self, surplus: float) -> None:
+        """Shelter leftover income, split equally across the household.
+
+        A saving decision independent of the scenario's `DrawdownStrategy`,
+        applied every year income exceeds spending, working or retired.
+        """
+        if surplus <= 0:
+            return
+        people = list(self.slots.gia_slots_by_person)
+        if not people:
+            self.portfolio.balances[self.plan.cash_slot] += surplus
+            return
+        for person in people:
+            self.invest_for(person, surplus / len(people))
+
+    def bed_and_isa(self, person: str, taxable_income: dict[str, float]) -> float:
+        """Sell enough of `person`'s GIA to fill the household's remaining ISA
+        headroom and subscribe the proceeds, sheltering it from CGT and dividend
+        tax for good. Run every year, after every other mechanism has had first
+        claim on the allowance.
+
+        Returns the CGT paid: funding this is a real disposal, not a wash.
+        """
+        gia_slots = self.slots.gia_slots_by_person.get(person, ())
+        if not gia_slots:
+            return 0.0
+        headroom = sum(
+            max(0.0, self.tax.isa_annual_allowance - self.isa_headroom_used.get(recipient, 0.0))
+            for recipient in isa_recipients(person, self.slots.isa_slots_by_person)
+            if self.slots.isa_slots_by_person.get(recipient)
+        )
+        available = self.portfolio.sum_of(gia_slots)
+        if headroom <= 0 or available <= 0:
+            return 0.0
+        already = taxable_income.get(person, 0.0)
+        basis_fraction = self.portfolio.basis_fraction_of(gia_slots)
+        gross = min(self.tax.gia_gross_for_net(already, basis_fraction, headroom), available)
+        if gross <= 0:
+            return 0.0
+        cgt = self.tax.capital_gains_tax(gross * (1.0 - basis_fraction), already)
+        self.portfolio.draw_pro_rata(gia_slots, gross)
+        credit_isa(
+            gross - cgt, person, self.slots.isa_slots_by_person, self.tax,
+            self.portfolio, self.isa_headroom_used,
+        )
+        return cgt
+
+    def can_draw_pension(self, person: str, year: PlanYear) -> bool:
+        """An inherited pot is drawable at any age: a beneficiary is held
+        neither to the deceased's access age nor to their own.
+        """
+        return (
+            person in self.slots.dc_accessible_override
+            or year.dc_accessible_by_person.get(person, False)
+        )
 
 
-def _invest_surplus(
-    surplus: float, portfolio: Portfolio, plan: Plan, slots: SlotMaps, tax: TaxSystem,
-    isa_headroom_used: dict[str, float],
-) -> None:
-    """Where leftover income actually goes, rather than sitting idle in cash.
-
-    Split equally across the household's people, into each person's own ISA
-    up to the annual subscription headroom, then their GIA for the rest --
-    see `_invest_for_person`. This is a saving decision, independent of
-    whichever `DrawdownStrategy` the scenario uses, and applies every year
-    -- working or retired -- that income exceeds spending.
-    """
-    people = list(slots.gia_slots_by_person)
-    if surplus <= 0:
-        return
-    if not people:
-        portfolio.balances[plan.cash_slot] += surplus
-        return
-    share = surplus / len(people)
-    for person in people:
-        _invest_for_person(share, person, portfolio, plan, slots, tax, isa_headroom_used)
-
-
-def _bed_and_isa(
-    person: str, portfolio: Portfolio, plan: Plan, slots: SlotMaps, tax: TaxSystem,
-    taxable_income: dict[str, float], isa_headroom_used: dict[str, float],
-) -> float:
-    """Progressively move `person`'s GIA balance into an ISA: sell just
-    enough to net whatever ISA headroom is left across the household this
-    plan-year -- `person`'s own first, a spouse's if theirs is full, after
-    every other mechanism has already had first claim on it -- and
-    subscribe the proceeds. A GIA has no reason to hold a balance
-    indefinitely once ISA room exists to shelter it from CGT and dividend
-    tax for good; this is the standard "Bed and ISA" move, run automatically
-    every year rather than left for someone to remember to do by hand.
-
-    Returns the CGT paid, so the caller can fold it into the year's tax
-    bill -- selling to fund this is a real disposal, not a wash.
-    """
-    gia_slots = slots.gia_slots_by_person.get(person, ())
-    if not gia_slots:
-        return 0.0
-    headroom = sum(
-        max(0.0, tax.isa_annual_allowance - isa_headroom_used.get(recipient, 0.0))
-        for recipient in isa_recipients(person, slots.isa_slots_by_person)
-        if slots.isa_slots_by_person.get(recipient)
+def _with_extra_taxable(year: PlanYear, person: str, amount: float) -> PlanYear:
+    return dataclasses.replace(
+        year,
+        taxable_other_by_person={
+            **year.taxable_other_by_person,
+            person: year.taxable_other_by_person.get(person, 0.0) + amount,
+        },
     )
-    if headroom <= 0:
-        return 0.0
-    available = portfolio.sum_of(gia_slots)
-    if available <= 0:
-        return 0.0
-    already = taxable_income.get(person, 0.0)
-    basis_fraction = portfolio.basis_fraction_of(gia_slots)
-    wanted_gross = tax.gia_gross_for_net(already, basis_fraction, headroom)
-    gross = min(wanted_gross, available)
-    if gross <= 0:
-        return 0.0
-    gain = gross * (1.0 - basis_fraction)
-    cgt = tax.capital_gains_tax(gain, already)
-    portfolio.draw_pro_rata(gia_slots, gross)
-    net = gross - cgt
-    credit_isa(net, person, slots.isa_slots_by_person, tax, portfolio, isa_headroom_used)
-    return cgt
+
+
+def _accrue_gia_dividends(accounts: _Accounts, year: PlanYear) -> float:
+    """Tax the assumed yield on each GIA's opening balance and reinvest it.
+
+    Reinvestment raises cost basis rather than balance, since growth already
+    carries the full total-return change. Stacked on this year's precompiled
+    taxable income alone: any pension drawn later in the year is not yet known.
+    """
+    portfolio = accounts.portfolio
+    tax_paid = 0.0
+    for person, gia_slots in accounts.slots.gia_slots_by_person.items():
+        opening = portfolio.sum_of(gia_slots)
+        if opening <= 0:
+            continue
+        dividend = opening * accounts.tax.gia_dividend_yield
+        tax_paid += accounts.tax.dividend_tax(
+            dividend, year.taxable_income_by_person.get(person, 0.0)
+        )
+        for slot in gia_slots:
+            if portfolio.balances[slot] > 0:
+                portfolio.cost_basis[slot] += dividend * portfolio.balances[slot] / opening
+    return tax_paid
+
+
+def _grow_balances(
+    accounts: _Accounts,
+    allocation,
+    market: YearReturns,
+    year: PlanYear,
+    rng: random.Random | None,
+) -> None:
+    for slot, asset in enumerate(accounts.plan.assets):
+        override = (
+            allocation.real_return(asset, market, year.index)
+            if allocation is not None else None
+        )
+        rate = override if override is not None else asset.returns.real_return(market, rng)
+        balance = accounts.portfolio.balances[slot] * (1 + rate - asset.annual_charge_pct)
+        accounts.portfolio.balances[slot] = max(0.0, balance - asset.flat_annual_fee)
+
+
+def _settle_maturities(accounts: _Accounts, year: PlanYear) -> None:
+    portfolio = accounts.portfolio
+    for from_slot, to_slot in year.maturities:
+        destination = to_slot if to_slot is not None else accounts.plan.cash_slot
+        portfolio.balances[destination] += portfolio.balances[from_slot]
+        portfolio.balances[from_slot] = 0.0
+
+
+def _take_dated_lump_sums(
+    accounts: _Accounts, requests, year: PlanYear
+) -> tuple[PlanYear, float]:
+    """Honour any `Scenario.pension_lump_sums` dated to this year.
+
+    Independent of `pension_access`: cash now, without committing to
+    crystallise the whole pot. Split 25/75 like a UFPLS payment and drawing on
+    the same lifetime allowance. Resolved before the automatic PCLS below, so an
+    explicit request is honoured in full rather than finding the allowance
+    already claimed when both land in the same year.
+
+    Returns the year with the taxable portion folded in — without that, 75% of
+    the lump sum would escape tax — and the gross taken.
+    """
+    taken = 0.0
+    for request in requests:
+        if not (year.start <= request.on < year.end):
+            continue
+        dc = accounts.slots.dc_slots_by_person.get(request.person, ())
+        if not dc or not accounts.can_draw_pension(request.person, year):
+            continue
+        gross = min(request.amount, accounts.portfolio.sum_of(dc))
+        if gross <= 0:
+            continue
+        used = accounts.tax_free_cash_taken.get(request.person, 0.0)
+        tax_free, taxable = accounts.tax.ufpls_split(gross, used)
+        accounts.tax_free_cash_taken[request.person] = used + tax_free
+        accounts.portfolio.draw_pro_rata(dc, gross)
+        already = year.taxable_income_by_person.get(request.person, 0.0)
+        tax_on_taxable = accounts.tax.income_tax(already + taxable) - accounts.tax.income_tax(already)
+        accounts.invest_for(request.person, tax_free + taxable - tax_on_taxable)
+        taken += gross
+        year = _with_extra_taxable(year, request.person, taxable)
+    return year, taken
+
+
+def _take_pcls(accounts: _Accounts, year: PlanYear, already_fired: set[str]) -> float:
+    """The one-off tax-free lump sum at each person's first pension access.
+
+    `already_fired` gates on the PCLS event itself, not on the lifetime
+    allowance: a dated lump sum taken before access would otherwise look like a
+    PCLS that had already happened, and silently suppress it.
+    """
+    taken = 0.0
+    for person, dc in accounts.slots.dc_slots_by_person.items():
+        if person in already_fired or not dc:
+            continue
+        if not accounts.can_draw_pension(person, year):
+            continue
+        used = accounts.tax_free_cash_taken.get(person, 0.0)
+        lump = accounts.tax.pcls_available(accounts.portfolio.sum_of(dc), used)
+        already_fired.add(person)
+        if lump <= 0:
+            continue
+        accounts.portfolio.draw_pro_rata(dc, lump)
+        accounts.invest_for(person, lump)
+        accounts.tax_free_cash_taken[person] = used + lump
+        taken += lump
+    return taken
+
+
+def _buy_income_annuity(
+    accounts: _Accounts, annuity, year: PlanYear, bought: dict[str, dict]
+) -> float:
+    """Convert a fraction of each pot into guaranteed income, once, at first
+    access. Returns the premium paid; `bought` records the benefit, which is
+    fixed from that point however the market performs afterwards.
+    """
+    premiums = 0.0
+    for person, dc in accounts.slots.dc_slots_by_person.items():
+        if not dc or person in bought:
+            continue
+        if not accounts.can_draw_pension(person, year):
+            continue
+        premium = accounts.portfolio.sum_of(dc) * annuity.fraction_of_pot
+        if premium <= 0:
+            continue
+        accounts.portfolio.draw_pro_rata(dc, premium)
+        bought[person] = {"benefit": annuity.annual_benefit(premium), "start_index": year.index}
+        premiums += premium
+    return premiums
+
+
+def _annuity_income(
+    annuity, bought: dict[str, dict], year: PlanYear, alive: frozenset[str]
+) -> tuple[PlanYear, float]:
+    """This year's guaranteed annuity income, folded into taxable income."""
+    total = 0.0
+    for person, state in bought.items():
+        if person not in alive:
+            continue
+        elapsed = year.index - state["start_index"]
+        benefit = state["benefit"] * (1 + annuity.escalation) ** elapsed
+        total += benefit
+        year = _with_extra_taxable(year, person, benefit)
+    return year, total
 
 
 def project(
@@ -364,25 +500,13 @@ def project(
 
     deaths = deaths if deaths is not None else plan.death_index_by_person
     care_needs = care_needs or []
-    annuity_bought: set[str] = set()
+    care_annuity_bought: set[str] = set()
     second_death = max(deaths.values()) if deaths else plan.n_years
 
     portfolio = Portfolio(list(plan.opening_balances))
-    # Lifetime tracker, not reset per year: the Lump Sum Allowance is a
-    # lifetime limit, and PCLS, UFPLS and a one-off `PensionLumpSum` all
-    # draw against the same one per person.
     tax_free_cash_taken: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
-    # Separate from the above: PCLS is a one-off event, gated on whether it
-    # has *itself* already fired for this person, not on whether the
-    # allowance has any use against it yet -- a `PensionLumpSum` taken
-    # before access begins would otherwise be mistaken for "PCLS already
-    # happened" and silently suppress it.
     pcls_fired: set[str] = set()
-    # A `Scenario.income_annuity`, once bought for a person, keeps paying for
-    # the rest of that person's life -- tracked here rather than recomputed,
-    # since the benefit is fixed (subject only to its own escalation) at the
-    # point of purchase, independent of how the market performs afterwards.
-    income_annuity_state: dict[str, dict] = {}
+    annuities_bought: dict[str, dict] = {}
     results: list[YearResult] = []
 
     for base_year in plan.years:
@@ -394,151 +518,43 @@ def project(
 
         year = plan.year_variants[alive][i]
         slots = plan.slots_by_variant[alive]
-        # Per-year, not per-plan: thresholds frozen in nominal terms shrink in
-        # real ones, so the bands differ by year. `compile_plan` resolved this
-        # once, since it does not depend on the market.
+        accounts = _Accounts(
+            plan=plan,
+            slots=slots,
+            tax=year.tax,
+            portfolio=portfolio,
+            tax_free_cash_taken=tax_free_cash_taken,
+        )
         tax = year.tax
         market = _returns_for(plan, path, year.index)
-        # Fresh every plan-year: how much of each person's £20,000 ISA
-        # allowance every ISA-crediting mechanism below has used so far.
-        isa_headroom_used: dict[str, float] = {}
 
-        # --- GIA dividend accrual, before growth touches the balance ----
-        # Assumed yield on the balance coming *into* the year, taxed as
-        # dividend income and reinvested (raises cost basis, not balance --
-        # growth already carries the full total-return change). Positioned
-        # against this year's precompiled taxable income only: any pension
-        # drawn later this year is not yet known at this point in the loop.
-        dividend_tax_paid = 0.0
-        for person, gia_slots in slots.gia_slots_by_person.items():
-            start_balance = portfolio.sum_of(gia_slots)
-            if start_balance <= 0:
-                continue
-            dividend = start_balance * tax.gia_dividend_yield
-            dividend_tax_paid += tax.dividend_tax(
-                dividend, year.taxable_income_by_person.get(person, 0.0)
-            )
-            for slot in gia_slots:
-                if portfolio.balances[slot] <= 0:
-                    continue
-                share = portfolio.balances[slot] / start_balance
-                portfolio.cost_basis[slot] += dividend * share
-
-        # --- growth, charges, maturities -------------------------------
-        for slot, asset in enumerate(plan.assets):
-            override = (
-                scenario.allocation.real_return(asset, market, year.index)
-                if scenario.allocation is not None
-                else None
-            )
-            rate = override if override is not None else asset.returns.real_return(market, rng)
-            balance = portfolio.balances[slot] * (1 + rate - asset.annual_charge_pct)
-            portfolio.balances[slot] = max(0.0, balance - asset.flat_annual_fee)
-
-        for from_slot, to_slot in year.maturities:
-            if to_slot is not None:
-                portfolio.balances[to_slot] += portfolio.balances[from_slot]
-            else:
-                portfolio.balances[plan.cash_slot] += portfolio.balances[from_slot]
-            portfolio.balances[from_slot] = 0.0
-
+        dividend_tax_paid = _accrue_gia_dividends(accounts, year)
+        _grow_balances(accounts, scenario.allocation, market, year, rng)
+        _settle_maturities(accounts, year)
         for slot, amount in year.contributions:
             portfolio.balances[slot] += amount
         for person, lump in year.lump_sums_by_person.items():
-            _invest_for_person(lump, person, portfolio, plan, slots, tax, isa_headroom_used)
+            accounts.invest_for(person, lump)
 
-        # --- one-off, dated partial-crystallisation lump sums -----------
-        # Independent of `pension_access`: "I want £50,000 of cash now"
-        # without committing to crystallise the whole pot, or on top of an
-        # ongoing UFPLS/PCLS mode. Split 25%/75% like a UFPLS payment,
-        # sharing the same lifetime Lump Sum Allowance counter. Resolved
-        # before any automatic PCLS-at-access event below, so an explicit
-        # request is honoured in full rather than finding the allowance
-        # already claimed by PCLS greedily taking the maximum available the
-        # moment access begins, if both land in the same plan-year.
-        lump_sum_this_year = 0.0
-        for request in scenario.pension_lump_sums:
-            if not (year.start <= request.on < year.end):
-                continue
-            dc = slots.dc_slots_by_person.get(request.person, ())
-            if not dc or not _dc_accessible(year, slots, request.person):
-                continue
-            available = portfolio.sum_of(dc)
-            if available <= 0:
-                continue
-            gross = min(request.amount, available)
-            used = tax_free_cash_taken.get(request.person, 0.0)
-            tax_free, taxable = tax.ufpls_split(gross, used)
-            tax_free_cash_taken[request.person] = used + tax_free
-            portfolio.draw_pro_rata(dc, gross)
-            already = year.taxable_income_by_person.get(request.person, 0.0)
-            tax_before = tax.income_tax(already)
-            net = tax_free + taxable - (tax.income_tax(already + taxable) - tax_before)
-            _invest_for_person(net, request.person, portfolio, plan, slots, tax, isa_headroom_used)
-            lump_sum_this_year += gross
-            # The taxable portion has to reach the year's real tax bill, or
-            # this would be a lump sum with no tax on 75% of it.
-            year = dataclasses.replace(
-                year,
-                taxable_other_by_person={
-                    **year.taxable_other_by_person,
-                    request.person: year.taxable_other_by_person.get(request.person, 0.0) + taxable,
-                },
-            )
+        year, lump_sum_this_year = _take_dated_lump_sums(
+            accounts, scenario.pension_lump_sums, year
+        )
+        pcls_this_year = (
+            _take_pcls(accounts, year, pcls_fired)
+            if scenario.pension_access is PensionAccess.PCLS else 0.0
+        )
 
-        # --- tax-free lump sum, once per person at pension access ------
-        pcls_this_year = 0.0
-        if scenario.pension_access is PensionAccess.PCLS:
-            for person, dc in slots.dc_slots_by_person.items():
-                if not _dc_accessible(year, slots, person):
-                    continue
-                if person in pcls_fired or not dc:
-                    continue
-                pot = portfolio.sum_of(dc)
-                lump = tax.pcls_available(pot, tax_free_cash_taken.get(person, 0.0))
-                pcls_fired.add(person)
-                if lump <= 0:
-                    continue
-                portfolio.draw_pro_rata(dc, lump)
-                _invest_for_person(lump, person, portfolio, plan, slots, tax, isa_headroom_used)
-                tax_free_cash_taken[person] = tax_free_cash_taken.get(person, 0.0) + lump
-                pcls_this_year += lump
-
-        # --- floor-and-upside annuity: bought once, at first access -----
         income_annuity = scenario.income_annuity
         annuity_premium_this_year = 0.0
-        if income_annuity is not None and income_annuity.enabled:
-            for person, dc in slots.dc_slots_by_person.items():
-                if not dc or person in income_annuity_state:
-                    continue
-                if not _dc_accessible(year, slots, person):
-                    continue
-                pot = portfolio.sum_of(dc)
-                premium = pot * income_annuity.fraction_of_pot
-                if premium <= 0:
-                    continue
-                portfolio.draw_pro_rata(dc, premium)
-                benefit = income_annuity.annual_benefit(premium)
-                income_annuity_state[person] = {"benefit": benefit, "start_index": year.index}
-                annuity_premium_this_year += premium
-
-        # --- floor-and-upside annuity: this year's guaranteed income -----
         annuity_income_this_year = 0.0
-        for person, state in income_annuity_state.items():
-            if person not in alive:
-                continue
-            elapsed = year.index - state["start_index"]
-            benefit = state["benefit"] * (1 + income_annuity.escalation) ** elapsed
-            annuity_income_this_year += benefit
-            year = dataclasses.replace(
-                year,
-                taxable_other_by_person={
-                    **year.taxable_other_by_person,
-                    person: year.taxable_other_by_person.get(person, 0.0) + benefit,
-                },
+        if income_annuity is not None and income_annuity.enabled:
+            annuity_premium_this_year = _buy_income_annuity(
+                accounts, income_annuity, year, annuities_bought
+            )
+            year, annuity_income_this_year = _annuity_income(
+                income_annuity, annuities_bought, year, alive
             )
 
-        # --- income and tax before any drawdown ------------------------
         taxable = year.taxable_income_by_person
         tax_paid = sum(tax.income_tax(v) for v in taxable.values()) + dividend_tax_paid
         ni_paid = sum(tax.national_insurance(v) for v in year.employment_income_by_person.values())
@@ -548,21 +564,12 @@ def project(
 
         growth_return = market.get("global_equity", 0.0)
         bond_return = market.get("gov_bonds", 0.0)
-        # --- care, means-tested per person -----------------------------
-        # Sampled per trial, so it cannot be precompiled the way the rest of
-        # the schedule is. Assessed on each person's OWN capital, which is how
-        # the rule actually works and why who enters care first can matter
-        # more to an estate than how much the household has.
+
         care_cost = 0.0
         care_state_funded = 0.0
         if care_needs:
-            # The annuity premium is folded into the year's fixed spending
-            # rather than drawn separately: it is a one-off cost the drawdown
-            # order should cover exactly as it covers any other, and treating
-            # it that way keeps a single path through the tax arithmetic.
             year, care_cost, care_state_funded = _apply_care(
-                year, alive, care_needs, plan, slots, portfolio,
-                scenario.care, annuity_bought,
+                accounts, year, alive, care_needs, scenario.care, care_annuity_bought,
             )
 
         draw_ctx = DrawdownContext(
@@ -575,13 +582,13 @@ def project(
             ladder_slot=plan.ladder_slot,
             bond_slot=plan.bond_slot,
             dc_accessible_by_person={
-                p: _dc_accessible(year, slots, p) for p in slots.dc_slots_by_person
+                p: accounts.can_draw_pension(p, year) for p in slots.dc_slots_by_person
             },
             is_retired=year.is_retired,
             essential_spend=year.essential,
             growth_return=growth_return,
             bond_return=bond_return,
-            isa_headroom_used=isa_headroom_used,
+            isa_headroom_used=accounts.isa_headroom_used,
             pension_access=scenario.pension_access,
             tax_free_cash_used=tax_free_cash_taken,
         )
@@ -593,7 +600,6 @@ def project(
                 return 0.0
             return scenario.drawdown.resolve(need, portfolio.copy(), dict(taxable), draw_ctx).unmet
 
-        # --- how much to spend -----------------------------------------
         if scenario.withdrawal is None:
             discretionary = year.nominal_discretionary
         else:
@@ -619,9 +625,8 @@ def project(
 
         net_cashflow = net_income - (year.fixed_spend + discretionary)
 
-        # --- settle the year -------------------------------------------
         if net_cashflow >= 0:
-            _invest_surplus(net_cashflow, portfolio, plan, slots, tax, isa_headroom_used)
+            accounts.invest_surplus(net_cashflow)
             draw = None
         else:
             draw = scenario.drawdown.resolve(-net_cashflow, portfolio, taxable, draw_ctx)
@@ -630,11 +635,8 @@ def project(
 
         scenario.drawdown.end_of_year(portfolio, taxable, draw_ctx)
 
-        # --- Bed and ISA: move GIA money into the ISA wrapper while any -
-        # allowance is still unclaimed, after every other mechanism above
-        # has already had first claim on it this plan-year.
         bed_and_isa_cgt = sum(
-            _bed_and_isa(person, portfolio, plan, slots, tax, taxable, isa_headroom_used)
+            accounts.bed_and_isa(person, taxable)
             for person in slots.gia_slots_by_person
         )
         tax_paid += bed_and_isa_cgt

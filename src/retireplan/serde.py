@@ -51,7 +51,6 @@ def _pd(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-# --- return models ---------------------------------------------------------
 
 def return_model_to_dict(model: ReturnModel) -> dict[str, Any]:
     if isinstance(model, SampledSeries):
@@ -104,7 +103,6 @@ def return_model_from_dict(raw: dict[str, Any]) -> ReturnModel:
     raise ValueError(f"unknown return model kind {kind!r}")
 
 
-# --- household -------------------------------------------------------------
 
 def household_to_dict(household: Household) -> dict[str, Any]:
     return {

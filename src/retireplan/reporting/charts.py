@@ -152,15 +152,11 @@ def fan_chart_svg(
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
 
-    # A series that is exactly zero throughout (a GIA the drawdown never
-    # needed, say) would otherwise divide by zero below. The skill tells
-    # callers to skip a flat-zero asset type rather than chart it, but this
-    # function should not crash if that check is missed -- render a flat
-    # line at the bottom of a nominal axis instead of raising.
+    # Floored at 1.0 so a series that is zero throughout renders flat on a
+    # nominal axis rather than dividing by zero in `yf`.
     y_max = max(max(p95) * 1.08, 1.0)
     y_min = 0.0
 
-    # The year half the households have ended, if known.
     half_gone_at = None
     if alive_fraction:
         for i, share in enumerate(alive_fraction[:n]):
@@ -204,10 +200,9 @@ def fan_chart_svg(
 
     end_x, end_y = xf(n - 1), yf(p50[-1])
 
-    # Where the cohort has mostly ended, so a reader can see the point past
-    # which the median is largely settled estates rather than living
-    # households. Drawn as a rule rather than a truncation because the line
-    # must still reach the year the bequest figures are read at.
+    # Marks where the median becomes mostly settled estates rather than living
+    # households. A rule, not a truncation: the line must still reach the year
+    # the bequest figures are read at.
     survivorship = ""
     if half_gone_at is not None and 0 < half_gone_at < n - 1:
         hx = xf(half_gone_at)

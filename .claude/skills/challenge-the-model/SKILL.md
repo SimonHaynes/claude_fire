@@ -5,27 +5,23 @@ description: Establish what this engine currently gets wrong and which way each 
 
 # Challenge the model
 
-Every other skill here describes how to *operate* the engine. This one exists
-to ask whether the engine is still right, because nothing else does, and
-because a success probability is the most confidently-wrong number this project
-produces.
+Every other skill operates the engine. This one asks whether the engine is still
+right, because nothing else does, and because a success probability is the most
+confidently-wrong number this project produces.
 
-Load it twice: at the start of an engagement, so you know what you are working
-with, and before the report is written, so the assumptions section names what
-actually bears on this household.
+Load it twice: at the start of an engagement, and again before the report, so
+the assumptions section names what bears on this household.
 
 ## REVIEW.md is the list
 
-`REVIEW.md` at the repo root is the canonical, dated record of what this engine
-gets wrong, graded by how much each item could move a real decision. **Read it
-rather than reciting from memory** — it changes as gaps get closed, and a
-limitation you disclose that has since been fixed is as damaging to trust as
-one you omit.
+`REVIEW.md` is the canonical dated record of what this engine gets wrong, graded
+by how much each item could move a real decision. **Read it rather than reciting
+from memory**: disclosing a limitation that has since been fixed damages trust
+as much as omitting one.
 
-It also carries a table of bugs found and fixed, and the pattern behind them:
-every one surfaced either from a number that looked too good, or from rendering
-the output and reading it. Neither is automatable, which is why this is a skill
-and not a test.
+It also holds a table of bugs found and fixed. Every one surfaced from a number
+that looked too good, or from rendering the output and reading it — neither
+automatable, which is why this is a skill and not a test.
 
 ## Before quoting any probability
 
@@ -43,9 +39,8 @@ and not a test.
 
 ## For this household specifically
 
-A generic limitations list is close to useless — readers skip it, and it
-protects the writer rather than informing the client. Work out which
-limitations actually bite here:
+A generic limitations list protects the writer rather than informing the client,
+and readers skip it. Work out which limitations actually bite here:
 
 - **Does it turn on when someone dies?** Bequest figures always do. Check
   which mortality model the household uses: under the `FixedAge` default,

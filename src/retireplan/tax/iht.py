@@ -3,33 +3,22 @@
 VERIFY BEFORE USE. Figures are 2026/27 and the bands are frozen to April 2031
 under current policy — but check gov.uk rather than trusting this comment.
 
-Why this module matters more than its size suggests: a projection that reports
-a "£19M estate" without IHT is overstating what reaches the children by around
-40%, and for a plan whose stated goal is leaving money to them, that is not a
-rounding error — it is the answer.
+A projection quoting a gross estate overstates what reaches the children by
+around 40%, so for a plan whose goal is leaving money to them this module is
+the answer rather than a refinement.
 
-## The April 2027 change
+**April 2027.** Unused pension funds enter the estate for IHT on deaths from
+6 April 2027 (Finance Act 2026). That inverts the old logic — spend ISAs first,
+leave the pension as the IHT-efficient wrapper — and makes a large unspent
+pension the most heavily taxed asset a household can die holding.
 
-Unused pension funds enter the estate for IHT on deaths from 6 April 2027
-(Finance Act 2026, Royal Assent 18 March 2026). This inverts the planning
-logic that held until now. Pensions used to sit *outside* the estate, so the
-standard advice was to spend ISAs first and leave the pension untouched as the
-IHT-efficient wrapper. After April 2027 that advantage is gone, and a large
-unspent pension becomes the most heavily taxed asset a household can die
-holding.
-
-## The stacking on death after 75
-
-Death after 75 means beneficiaries pay income tax at their own marginal rate
-on what they draw from an inherited pension. Combined with IHT that is a
-stack, though not the naive 40%+40% it is often reported as: the rules exempt
-from income tax the portion of the fund equal to the IHT paid on it. So for a
-fund F with IHT rate `i` and a beneficiary marginal rate `b`, the beneficiary
-receives F(1-i)(1-b) — an effective 64% for a higher-rate child, against 52%
-for a basic-rate one, and 40% on an ISA which suffers IHT alone.
-
-That gap is the whole argument for moving money out of a pension during life:
-see `effective_pension_death_rate` and the decision rule documented on it.
+**Stacking on death after 75.** Beneficiaries then pay income tax at their own
+marginal rate on what they draw from an inherited pension. It is not the naive
+40%+40%: the portion of the fund equal to the IHT paid on it is exempt from
+income tax, so a fund F leaves F(1-i)(1-b) — 64% effective for a higher-rate
+child, 52% for a basic-rate one, against 40% on an ISA, which bears IHT alone.
+That gap is the argument for moving money out of a pension during life; see
+`effective_pension_death_rate`.
 """
 from __future__ import annotations
 
@@ -44,17 +33,14 @@ IHT_RATE = 0.40
 PENSIONS_IN_ESTATE_FROM = date(2027, 4, 6)
 ANNUAL_GIFT_EXEMPTION = 3_000.0
 
-#: When these figures were last checked against gov.uk. See the equivalent
-#: note in `tax/uk.py`: the date exists so that skipping the check is a
-#: decision rather than an oversight.
 VERIFIED_ON = date(2026, 8, 6)
+"""When these figures were last checked against gov.uk — see `tax/uk.py`."""
 
-#: Taper relief: the multiplier applied to the *tax* on a gift, by how many
-#: full years the donor survived it. Note this reduces the tax, not the value
-#: of the gift, and it only bites where the gift exceeded the nil-rate band —
-#: a gift comfortably inside the band has no tax to taper in the first place,
-#: which is why "I survived four years so it's 24%" is usually wrong.
 GIFT_TAPER = ((3, 1.0), (4, 0.8), (5, 0.6), (6, 0.4), (7, 0.2))
+"""Multiplier on the *tax* on a gift, by full years the donor survived it. It
+reduces the tax rather than the gift, and only bites where the gift exceeded the
+nil-rate band — which is why "I survived four years so it's 24%" is usually
+wrong: a gift inside the band has no tax to taper."""
 
 
 def gift_taper_multiplier(years_survived: float) -> float:

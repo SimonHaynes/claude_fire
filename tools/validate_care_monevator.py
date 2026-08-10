@@ -100,7 +100,7 @@ REFORM_TARIFF_STEP = 250.0
 REFORM_PEA_WEEKLY = 1_295.0 / 52.0
 
 
-# --- 1. The formula, checked in isolation, against the article's own numbers -
+# 1. The formula, checked in isolation, against the article's own numbers.
 
 def check_formula() -> None:
     print("--- 1. Formula check: MeansTest against the article's own £16,640 example ---")
@@ -114,7 +114,7 @@ def check_formula() -> None:
     print()
 
 
-# --- 2. Full household, run under both regimes -----------------------------
+# 2. Full household, run under both regimes.
 
 def build_household(count_pension_as_capital: bool) -> Household:
     ta = Person("TA", TA_DOB, full_state_pension=True, sex="male")
@@ -129,9 +129,8 @@ def build_household(count_pension_as_capital: bool) -> Household:
         assets.append(
             Asset("TA — DC Pension", AssetType.DC_PENSION, "TA", 300_000.0, returns=FixedReal(0.0))
         )
-    # else: model the same £12,000/yr the pension provides as if it were
-    # already an annuity/DB-style income the means test only ever sees as
-    # *income*, never as capital -- the reading the article's own £16,640
+    # else: treat the same £12,000/yr as annuity/DB-style income the means test
+    # only ever sees as income, which is the reading the article's own £16,640
     # tariff-income example is consistent with.
     return Household(
         people=[ta, mrs_ta],

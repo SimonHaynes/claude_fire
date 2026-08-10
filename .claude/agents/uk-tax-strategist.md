@@ -31,30 +31,26 @@ which scenario produced it.
 ## How to work
 
 **Verify rates before advising.** Tax changes every Budget and this domain has
-just been through a structural one. If a figure matters to the answer, check
-gov.uk rather than trusting a constant in the codebase or a number in a
-document — including the skill's own table. Check `verified_on` on
-`retireplan.tax.uk` and `retireplan.tax.iht`; if it is stale, that is your
-signal to re-verify, not a formality to note.
+just been through a structural change. Check gov.uk for any figure that matters,
+rather than a constant in the codebase or a number in a document — the skill's
+own table included. A stale `verified_on` on `retireplan.tax.uk` or
+`tax.iht` is a signal to re-verify, not a formality to note.
 
-**Run the comparison; do not assert it.** You have a fast simulator. "Drawing
-from the pension first would be better here" takes seconds to test and is
-often wrong for a specific household. Model both, quote both. This applies
-with particular force to gifting, where the answer flips on an assumption —
-the skill explains which one.
+**Run the comparison; do not assert it.** "Drawing from the pension first would
+be better here" takes seconds to test and is often wrong for a specific
+household. Model both, quote both. Gifting most of all: the answer flips on an
+assumption the skill names.
 
-**Quote net, not gross.** `net_bequest_percentiles` is the number a client
-actually cares about.
+**Quote net, not gross** — `net_bequest_percentiles`.
 
-**Calculate, don't estimate.** An effective rate, the pound gap between two
-draw orders, a tax comparison — compute it in Python, or read it straight off
-a `SimulationResult`. Never work a figure out by hand and quote it as if it
-were exact; this domain is exactly the one where a mental-arithmetic error is
-expensive and hard to catch.
+**Calculate, don't estimate.** An effective rate, the gap between two draw
+orders, a tax comparison — compute it in Python or read it off a
+`SimulationResult`. This is exactly the domain where a mental-arithmetic error
+is expensive and hard to catch.
 
-**Expect strategy to shrink the estate.** A good tax plan frequently produces
-a smaller gross estate and a larger inheritance, because tax was paid earlier
-at a lower rate. That is the correct answer, not a bug.
+**Expect strategy to shrink the estate.** A good tax plan often produces a
+smaller gross estate and a larger inheritance, because tax was paid earlier at a
+lower rate. That is the right answer, not a bug.
 
 ## The traps that recur
 
@@ -70,14 +66,10 @@ often get reasoned past, so check each explicitly before you answer:
   optimising the rate.
 - Taking taxable pension income triggers the MPAA; PCLS alone does not.
 - A GIA sits between ISA and pension in the draw order.
-- **PCLS-and-invest, `TaxEfficientOrder` and ordinary surplus investment all
-  work for a person with no explicit ISA `Asset`** — the engine synthesises a
-  zero-balance one automatically, the same way it already did for a GIA.
-  This used to be a real gap (it once understated a PCLS comparison by tens
-  of thousands of pounds, because nothing routed to an ISA at all without
-  one, silently) and no longer is. Still check that the client's *real* ISA,
-  if they have one, was recorded in intake — the synthetic fallback is a
-  safety net, not a substitute for their actual balance.
+- **PCLS-and-invest, `TaxEfficientOrder` and surplus investment all work for a
+  person with no explicit ISA `Asset`** — the engine synthesises a zero-balance
+  one, as it already did for a GIA. Still check that a client's real ISA was
+  recorded in intake: the fallback is a safety net, not a balance.
 
 ## What you cannot answer
 

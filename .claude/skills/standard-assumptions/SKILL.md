@@ -5,28 +5,20 @@ description: What to assume when a client's information is incomplete — the pu
 
 # Standard assumptions
 
-Every engagement has gaps. Stopping to ask about all of them is exhausting for
-the client and makes the work look indecisive; filling them all in silently
-produces a plan built on invented numbers. This skill draws the line.
+Asking about every gap is exhausting and looks indecisive; filling them all in
+silently builds a plan on invented numbers.
 
 **The rule: assume where a recognised standard exists, ask where the answer is
-a decision only the client can make.**
-
-Two obligations follow, and neither is optional:
+a decision only the client can make.** Two obligations follow:
 
 1. **Every assumption is recorded** in the household docstring and surfaces in
-   the report's notes section, with its source and **which way it errs**. A
-   reader can judge an assumption they can see.
-2. **A default is never presented as a fact.** "Assumed 2% inflation, the
-   Bank of England target" is honest; a projection that quietly contains 2% is
-   not.
-
----
+   the report's notes, with its source and **which way it errs**.
+2. **A default is never presented as a fact.** "Assumed 2% inflation, the Bank
+   of England target" is honest; a projection that quietly contains 2% is not.
 
 ## Ask — do not assume
 
-These change the recommendation and have no defensible default, because they
-are preferences or facts, not parameters:
+Preferences and facts, not parameters, so there is no defensible default:
 
 - **Anything with a real number attached**: balances, salaries, contributions,
   debts, the actual spending figure. Never estimate a balance.
@@ -43,16 +35,13 @@ are preferences or facts, not parameters:
   client who volunteers a serious condition has changed the mortality
   assumption and should be told so.
 
-If one of these is missing, ask. One clear question is cheaper than a plan
-built on a guess.
-
----
+If one is missing, ask: one clear question is cheaper than a plan built on a
+guess.
 
 ## Assume — using these defaults
 
-Each is a published or conventional figure, already the engine's default, and
-each is stated with the direction it errs so the bias is visible rather than
-hidden.
+Each is published or conventional, already the engine's default, and carries the
+direction it errs so the bias is visible.
 
 | Gap | Default | Source | Errs toward |
 |---|---|---|---|
@@ -75,27 +64,19 @@ hidden.
 | Gift growth rate | 0% (valued as spent on receipt) | Deliberate | Neither; **run both**, the answer flips |
 | "Global equities" / "the market", unspecified | `SampledSeries("global_equity")` — the US-proxy series (S&P 500 + 10yr Treasury, Damodaran/NYU Stern) | Same convention FIRECalc and cFIREsim use: one long, clean, well-understood historical series rather than a constructed global one | Not global; see below before reaching for an alternative |
 
-**When a default is doing real work, say so out loud.** If the recommendation
-turns on one of these — a marginal retirement date, an estate near the £2m
-residence nil-rate band taper — it stops being a background assumption and
-becomes something the client should be asked about directly.
-
----
+**When a default is doing real work, say so out loud.** Where the
+recommendation turns on one — a marginal retirement date, an estate near the £2m
+taper — it stops being background and should be put to the client directly.
 
 ## Assume, then flag for confirmation
 
-A middle case worth naming, because it is the most common one: the notes imply
-an answer but do not state it. Take the reading, say which reading you took
-and why, and invite correction — do not stop the work for it.
+The most common case: the notes imply an answer without stating it. Take the
+reading, say which and why, invite correction, and keep working.
 
-Worked example from a real intake: *"House repairs, car replacement etc.
-£10,000/yr"*. Essential or discretionary? For life, or only while there is a
-car to replace? The defensible call is discretionary and for life, and the
-docstring says so along with the reasoning. That is better than either
-guessing silently or blocking on a question the client may not have thought
-about.
-
----
+*"House repairs, car replacement etc. £10,000/yr"* — essential or discretionary?
+For life, or only while there is a car? The defensible call is discretionary and
+for life, with the reasoning in the docstring. Better than guessing silently or
+blocking on a question the client may never have considered.
 
 ## What this does not license
 

@@ -114,14 +114,11 @@ class RateSchedule:
         stacked on `existing_income`.
 
         This is UFPLS: 25% of each withdrawal is tax-free until the Lump Sum
-        Allowance is used up, then withdrawals are fully taxable. Solved
-        exactly in two phases, the same band-walking approach as
-        `gross_for_net`: first while relief headroom remains (where a pound
-        of gross yields `1 - taxable_fraction * rate` of net, since part of
-        it was never taxable to begin with), then -- for whatever net is
-        still needed -- as an ordinary fully-taxable gross-up continued from
-        wherever phase one left off. Falls back to `gross_for_net` outright
-        if there is no relief to give.
+        Allowance runs out, then withdrawals are fully taxable. Solved exactly
+        by band-walking as `gross_for_net` does, in two phases: while headroom
+        remains a pound of gross nets `1 - taxable_fraction * rate`, and any
+        net still needed after that is an ordinary gross-up continued from
+        where phase one stopped.
         """
         if target_net <= 0:
             return 0.0
@@ -129,10 +126,9 @@ class RateSchedule:
             return self.gross_for_net(existing_income, target_net)
 
         taxable_fraction = 1.0 - relief_fraction
-        # Relief headroom is `relief_headroom` tax-free pounds; every pound of
-        # *gross* carries `relief_fraction` tax-free and `taxable_fraction`
-        # taxable, so headroom runs out after this much taxable income has
-        # been generated alongside it.
+        # Every pound of gross carries `relief_fraction` tax-free alongside
+        # `taxable_fraction` taxable, so headroom runs out once this much
+        # taxable income has been generated with it.
         phase_1_taxable_capacity = (
             relief_headroom / relief_fraction * taxable_fraction
             if taxable_fraction > 0 else INF
@@ -149,9 +145,6 @@ class RateSchedule:
             width = min(band.upper - position, phase_1_taxable_capacity - taxable_used)
             if width <= 0:
                 break
-            # Net gained per pound of *gross* in this band: relief_fraction
-            # of it was never taxable, taxable_fraction is taxed at the
-            # band's rate.
             net_rate = 1.0 - taxable_fraction * band.rate
             if net_rate <= 0:  # a confiscatory band yields no net income
                 if width == INF:
@@ -168,9 +161,7 @@ class RateSchedule:
             position += width
             taxable_used += width
 
-        # Relief headroom (or the bands themselves) ran out before the
-        # target was reached: whatever remains is fully taxable, stacked on
-        # top of wherever phase one left off.
+        # Headroom (or the bands) ran out first: the rest is fully taxable.
         if remaining_net <= 0:
             return gross
         return gross + self.gross_for_net(position, remaining_net)

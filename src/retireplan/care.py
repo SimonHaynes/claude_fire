@@ -1,49 +1,26 @@
 """Late-life care: who needs it, for how long, and who pays.
 
-Care is the largest single spending risk a retired household faces, and it is
-the one where "how much does it cost" is the wrong first question. What
-actually determines the effect on an estate is the **means test**, which is
-assessed on each person individually, and which disregards the family home for
-as long as a spouse still lives in it. Two households with identical wealth can
-see wildly different outcomes depending on how that wealth is held and who
-enters care first.
+Care is the largest single spending risk a retired household faces, and cost is
+the wrong first question. What decides the effect on an estate is the means
+test: assessed per person, and disregarding the family home while a spouse
+still lives there. Two households of identical wealth can end up far apart
+depending on how that wealth is held and who enters care first.
 
-## What is modelled
+Modelled: whether care is needed (sampled per person per trial), how long it
+lasts (skewed — the long tail drives the cost, which is why an average is a poor
+planning number), the England means test per person, and the state as a floor.
+That floor matters for reading results: once assessable capital hits the limit
+the local authority pays, so care stops draining the estate rather than driving
+it negative, and a household that gets there has not "failed" in this engine's
+sense — it has fallen back on the state, reported as its own figure.
 
-  * **Whether care is needed at all**, sampled per person per trial rather
-    than assumed. Roughly a quarter of people aged 65 will spend time in
-    residential care; assuming everybody does overstates the risk, and
-    assuming nobody does is what this engine used to do.
-  * **How long it lasts**, drawn from a skewed distribution. The mean stay is
-    around two and a half years, but the median is shorter and the tail is
-    long — a small number of very long stays drive most of the cost, which is
-    exactly why an average is a poor planning number.
-  * **The means test, per person** (England). Above the upper capital limit
-    you pay in full. Below it the local authority contributes, and below the
-    lower limit it funds the care while the resident contributes most of
-    their income. **The home is disregarded entirely while a spouse, partner
-    or dependent relative still lives there.**
-  * **The state as a floor.** Nobody in England is left without essential
-    care because they ran out of money. Once assessable capital falls to the
-    limit, the local authority pays. Care therefore stops draining an estate
-    at that point rather than driving it negative, and a household that
-    exhausts its capital on care has not "failed" in the sense this engine
-    uses the word — it has fallen back on the state, which is a real and
-    materially different outcome, and is reported as its own figure.
+Not modelled: NHS Continuing Healthcare, Attendance Allowance, deferred payment
+agreements, third-party top-ups, and any nation but England.
 
-## What is deliberately not modelled
-
-NHS Continuing Healthcare (free care for a primarily health-driven need, but
-hard to qualify for and impossible to predict), Attendance Allowance, the
-deferred payment agreement, top-up fees from third parties, and any regional
-variation — these figures are England-only. Care in Scotland, Wales and
-Northern Ireland works differently.
-
-**Deprivation of assets is not modelled and cannot be.** A local authority may
-disregard a gift made to avoid care fees, with no time limit, and treat the
-giver as still holding the money. That is a judgement about intention, not
-arithmetic. It is the single most important reason that care-driven estate
-planning belongs with a solicitor rather than with this model — see the
+Deprivation of assets is not modelled and cannot be: a local authority may
+disregard a gift made to avoid care fees, with no time limit, which is a
+judgement about intention rather than arithmetic. It is the main reason
+care-driven estate planning belongs with a solicitor — see the
 `legal-and-trust-structuring` skill.
 """
 from __future__ import annotations
@@ -51,8 +28,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-# --- England, 2025/26. VERIFY BEFORE USE: these move most years. -----------
-
+# England, 2025/26. VERIFY BEFORE USE: these move most years.
 UPPER_CAPITAL_LIMIT = 23_250.0
 """Above this, a resident pays the full cost of their care."""
 
@@ -65,13 +41,10 @@ TARIFF_INCOME_STEP = 250.0
 PERSONAL_EXPENSES_ALLOWANCE_WEEKLY = 30.15
 """What a local-authority-funded resident keeps from their own income."""
 
-#: Roughly a quarter of people aged 65 will spend time in residential care,
-#: with women materially more likely than men -- they live longer, and are
-#: more likely to outlive the partner who would otherwise care for them at
-#: home. Widely cited planning figures; treat as an order of magnitude, not a
-#: precision estimate, and see the class docstring on why the *length* matters
-#: more than the incidence.
 LIFETIME_CARE_PROBABILITY = {"male": 0.20, "female": 0.30, None: 0.25}
+"""Women are materially likelier: they live longer, and more often outlive the
+partner who would otherwise care for them at home. Widely cited planning
+figures — an order of magnitude, not a precision estimate."""
 
 MEAN_STAY_YEARS = 2.5
 """Mean length of a residential stay. The median is nearer eighteen months --

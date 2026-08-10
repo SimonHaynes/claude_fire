@@ -306,7 +306,7 @@ class TestPensionAccess:
 
 
 class TestSurplusInvesting:
-    """Leftover income must not sit idle in cash -- see `_invest_surplus`."""
+    """Leftover income must not sit idle in cash -- see `_Accounts.invest_surplus`."""
 
     def test_surplus_goes_to_isa_up_to_the_allowance(self, simple_household, flat_market):
         scenario = Scenario("no retirement", withdrawal=SpendNominal())

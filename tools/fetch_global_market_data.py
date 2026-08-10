@@ -248,21 +248,16 @@ def build_series(rows: list[dict]) -> dict[int, dict]:
         out[y] = {
             "global_equity_gdpw": (1 + nom_eq) / (1 + us_inflation) - 1,
             "global_bonds_gdpw": (1 + nom_bd) / (1 + us_inflation) - 1 if nom_bd is not None else None,
-            # Deliberately NOT named "inflation": MarketData.load() merges every CSV in
-            # the data directory by column name, and "inflation" is the shared key
-            # FixedNominal/HeldToMaturityCredit deflate against everywhere else in this
-            # package. Reusing it here would let this file silently overwrite (or be
-            # overwritten by) us_long's FRED-sourced inflation for the years they
-            # overlap, depending on filename sort order -- a hazard worth avoiding
-            # entirely rather than relying on alphabetical luck.
+            # Not "inflation": `MarketData.load()` merges CSVs by column name, so
+            # sharing that key would let this file and us_long's FRED-sourced
+            # inflation overwrite each other on filename sort order.
             "inflation_gdpw": us_inflation,
             "n_countries": nominal[y]["n_countries"],
             "interp_frac": nominal[y]["interp_frac"],
         }
-    # 1870-1899 is real data, not garbage -- it's just thin (as few as 5 of the
-    # 16 countries), which would misrepresent itself as "global" if shipped
-    # alongside the stable 16-country panel from 1900 on. Cut here, not just
-    # flagged, so nothing downstream can use it by accident.
+    # 1870-1899 is real but thin (as few as 5 of the 16 countries), so it would
+    # misrepresent itself as "global" beside the panel from 1900 on. Cut rather
+    # than flagged, so nothing downstream can use it by accident.
     return {y: row for y, row in out.items() if y >= SHIP_FROM_YEAR}
 
 

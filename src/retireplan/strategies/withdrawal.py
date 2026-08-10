@@ -4,61 +4,41 @@ Essential spending, debt payments and one-off commitments are never touched —
 a strategy only ever flexes the discretionary part, which is what makes these
 rules something a household could plausibly agree to live by.
 
-## How each rule decides
+Two families, answering different questions.
 
-There are two families here, and they answer different questions.
+**Needs-based** rules start from the spending plan and cut only when the money
+will not stretch:
 
-**Needs-based** rules start from the spending plan — what the household said
-it wants to live on — and cut only when the money will not stretch:
-
-    SpendNominal          spend the plan, and let a shortfall be a shortfall.
+    SpendNominal          spend the plan; let a shortfall be a shortfall.
     PostAccessStepUp      spend the plan, then permanently raise it once a
                           pension unlocks and the portfolio is clearly surplus.
+    GuytonKlinger         the needs-based rule that genuinely adjusts, via
+                          portfolio guardrails that ratchet spending both ways.
 
-A third, `FixedFloorGuardrail`, was removed rather than kept as an option. It
-cut discretionary spending only once the accessible pots could no longer fund
-the year -- the point of collapse -- so it acted far too late to protect
-anything, and its recovery branch had nothing to recover from. Measured over
-2,000 trials on a real household it cut 74 times and recovered zero times,
-against 638 cuts and 561 recoveries for `GuytonKlinger`. Keeping a rule whose
-name promised a safeguard it did not provide was worse than not offering it:
-it was chosen for reports precisely because it sounded prudent.
+**Portfolio-based** rules ignore the plan and spend a fraction of what the
+portfolio is worth, so income falls after a crash and rises after a boom:
 
-`GuytonKlinger` is the needs-based rule that actually adjusts. If the goal is
-flat, predictable spending with the shortfall risk stated openly, that is
-`SpendNominal`.
+    PercentOfPortfolio    `rate` of the current portfolio — the "4% rule" in
+                          its honest endowment form, 4% of what you have now.
+    VariablePercentage    a rate that rises with age, since a 90-year-old can
+                          safely spend a far higher fraction than a 60-year-old.
 
-**Portfolio-based** rules ignore the plan and derive spending from what the
-portfolio is worth, so income falls automatically after a crash and rises
-after a boom:
+There is no free option. Needs-based rules give predictable income and put the
+uncertainty into whether the plan survives; portfolio-based rules can hardly
+fail, and put the uncertainty into how much you get to spend — a rule that never
+fails can still deliver a 40% pay cut in a bad decade. Read the spend
+percentiles alongside the success probability, never the latter alone.
 
-    PercentOfPortfolio    spend `rate` of the current portfolio (the "4% rule"
-                          in its honest, endowment form: 4% of what you have
-                          *now*, not 4% of what you had at retirement uprated
-                          for inflation).
-    VariablePercentage    spend a rate that rises with age, on the reasoning
-                          that a 90-year-old can safely spend a far higher
-                          fraction than a 60-year-old.
+A `FixedFloorGuardrail` was removed rather than kept as an option: it cut only
+once the accessible pots could no longer fund the year, far too late to protect
+anything, and over 2,000 trials it cut 74 times and recovered zero times against
+`GuytonKlinger`'s 638 and 561. Do not reintroduce a rule whose name promises a
+safeguard it does not provide — it gets chosen for reports because it sounds
+prudent.
 
-The trade is the same in both cases and there is no free option: needs-based
-rules give a predictable income and put all the uncertainty into whether the
-plan survives; portfolio-based rules almost never run out of money — they
-cannot, since they spend a fraction of whatever remains — and put all the
-uncertainty into how much you get to spend. A portfolio rule that never fails
-can still deliver a 40% pay cut in a bad decade, which is why success
-probability alone is a poor way to compare the two families. Read the spend
-percentiles alongside it.
-
-Guyton-Klinger sits between them: a needs-based plan with portfolio-based
-guardrails that ratchet it up or down.
-
-## The dry-run mechanism
-
-Every strategy is handed `shortfall_for(amount)`, which reports what would be
-left uncovered if it spent that much this year. That keeps the rules generic:
-a strategy never needs to know the drawdown order, the tax rules, or which
-pots are accessible, and it automatically respects whichever drawdown strategy
-the scenario happens to be using.
+Every strategy is handed `shortfall_for(amount)`, reporting what spending that
+much would leave uncovered. That keeps rules generic: none needs to know the
+drawdown order, the tax rules, or which pots are accessible.
 """
 from __future__ import annotations
 

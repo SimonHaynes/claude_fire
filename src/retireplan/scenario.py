@@ -66,7 +66,7 @@ class PensionLumpSum:
     pots — there is only ever one DC pension balance here, and what changes
     is how much of its *future* tax-free entitlement is still available.
 
-    Proceeds are invested the same way a PCLS is (`_invest_for_person`: ISA,
+    Proceeds are invested the same way a PCLS is (`_Accounts.invest_for`: ISA,
     then GIA, then cash) — pair with a `Scenario.one_off_spends` entry if
     the point is to actually spend it rather than reinvest it.
     """
@@ -198,7 +198,7 @@ class Scenario:
     whether the person is still contributing (UFPLS triggers the Money
     Purchase Annual Allowance immediately; PCLS alone does not).
 
-    A PCLS's proceeds are invested via `_invest_for_person`: the owner's own
+    A PCLS's proceeds are invested via `_Accounts.invest_for`: the owner's own
     ISA first (then a spouse's if theirs is full), then the owner's GIA, and
     only cash if neither exists -- the same routing ordinary income surplus
     gets, since a PCLS belongs to the person it came from and has no more

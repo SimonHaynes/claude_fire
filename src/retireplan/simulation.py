@@ -50,32 +50,23 @@ class SimulationResult:
     wealth_percentiles: dict[int, list[float]]
     investable_percentiles: dict[int, list[float]]
     isa_percentiles: dict[int, list[float]]
-    """ISA balance alone, by year. Superseded by `bridge_percentiles` for
-    bridge purposes now that a GIA can carry part of it too — kept because
-    "how much is in the ISA" is still its own useful question."""
+    """ISA balance alone. `bridge_percentiles` supersedes it for bridge
+    questions now a GIA can carry part of one."""
 
     bridge_percentiles: dict[int, list[float]]
     """Everything outside a pension (cash reserve, ISA, GIA) by year — what
-    actually funds a retirement before pension access, and so the real
-    constraint for anyone retiring before then. Read this at
-    `pension_access_year`: the spread between its 10th and 90th percentile
-    there is how close the bridge came to running out, not just whether it
-    did."""
+    actually funds a retirement before pension access, and so the binding
+    constraint for anyone retiring before then."""
 
     pension_access_year: int | None
-    """The first calendar year any DC pension in the household unlocks, or
-    `None` if the household has no DC pension asset at all (there is then no
-    bridge to measure)."""
+    """First calendar year any DC pension unlocks, or `None` when the household
+    has no DC pension and so nothing to bridge."""
 
     asset_type_percentiles: dict[str, dict[int, list[float]]]
-    """Every slot's balance, summed by `AssetType.value` and by year — the
-    breakdown behind `wealth_percentiles`, not an alternative to it: summing
-    every asset type's median at a given year will not exactly equal
-    `wealth_percentiles[50]` at that year (medians do not add across
-    trials), but the total *is* exactly `wealth_percentiles` computed the
-    same way, so report that for the total row and this for each type's row.
-    Cash reserves and any ladder reserve are grouped under `"cash"`. A
-    household with no asset of a given type simply has no key for it."""
+    """Balances summed by `AssetType.value`, by year. Report totals from
+    `wealth_percentiles`, not by adding these: medians do not add across
+    trials. Cash, ladder and bond reserves all group under `"cash"`; a type the
+    household holds none of simply has no key."""
 
     bequest_percentiles: dict[int, float]
     """GROSS estate, before any death taxes. Rarely the number a client wants."""
@@ -100,31 +91,24 @@ class SimulationResult:
     sample_last_year: int
 
     alive_fraction: list[float] = dataclasses.field(default_factory=list)
-    """Share of trials with anyone still living, by year.
-
-    Needed because `wealth_percentiles` quietly changes meaning as a cohort
-    dies out: past about 85 it is a mixture of living households and frozen
-    estates, and by the end it is entirely estates. A fan chart captioned as
-    a household's wealth is asserting something untrue about a 100-year-old
-    unless this is used to say where the living part stops."""
+    """Share of trials with anyone still living, by year. `wealth_percentiles`
+    changes meaning as a cohort dies out — past about 85 it mixes living
+    households with frozen estates — so a fan chart needs this to say where the
+    living part stops."""
 
     median_second_death_year: int | None = None
-
-    state_funded_care_probability: float = 0.0
-    """Share of trials in which the local authority ended up meeting part of
-    a care bill.
-
-    Not a failure -- nobody in England goes without essential care for lack of
-    money -- but it is the outcome where the estate has been spent down to the
-    means-test floor, so it is the number a client planning to leave something
-    behind should actually be shown."""
-
-    median_care_paid: float = 0.0
-    """Median total paid towards care by the household across a lifetime,
-    after the means test. Zero for most trials, because most people never
-    enter residential care."""
     """Calendar year the household is expected to end. Bequest figures are
     conditional on it, which is worth stating rather than implying."""
+
+    state_funded_care_probability: float = 0.0
+    """Share of trials where the local authority met part of a care bill. Not a
+    failure, but it is the outcome where the estate has been spent down to the
+    means-test floor — the number to show a client who plans to leave something
+    behind."""
+
+    median_care_paid: float = 0.0
+    """Median lifetime care cost met by the household after the means test. Zero
+    for most trials, because most people never enter residential care."""
 
     def year_labels(self) -> list[int]:
         return [self.first_year + i for i in range(self.n_years)]
@@ -136,33 +120,25 @@ class SimulationResult:
         return self.bridge_percentiles[percentile][year - self.first_year]
 
     def bridge_at_access(self) -> tuple[float, float] | None:
-        """(10th, 90th) percentile of non-pension assets in the year pension
-        access begins — `None` if there is no DC pension to unlock, in which
-        case there is no bridge to report.
+        """(10th, 90th) percentile of non-pension assets in the year access
+        begins — "how much is there to spend from once the pension is in play".
 
-        **This can already include a year of pension-funded top-ups**, not
-        just what the bridge itself carried: a strategy that draws pension
-        aggressively once it unlocks (`TaxEfficientOrder`, say) can recycle
-        surplus back into the ISA/GIA the same plan-year access begins,
-        which measurably refills a bridge that had already run dry the year
-        before — even for trials that failed. `bridge_before_access()` is
-        the honest "how close did the bridge itself come to running out"
-        answer; use this one only when the question really is "how much is
-        there to spend from once the pension is in play," not before."""
+        This already includes a year of pension-funded top-ups: a strategy that
+        draws hard once the pension unlocks can refill, in that same year, a
+        bridge that had run dry the year before, failed trials included. Use
+        `bridge_before_access` to ask how close the bridge itself came."""
         if self.pension_access_year is None:
             return None
-        return (self.bridge_at(self.pension_access_year, 10), self.bridge_at(self.pension_access_year, 90))
+        return (
+            self.bridge_at(self.pension_access_year, 10),
+            self.bridge_at(self.pension_access_year, 90),
+        )
 
     def bridge_before_access(self) -> tuple[float, float] | None:
-        """(10th, 90th) percentile of non-pension assets in the last plan-year
-        *before* pension access begins — before any pension money has been
-        drawn or recycled back into it. This is what "how close did the
-        bridge come to running out" actually means: `bridge_at_access()`
-        answers a related but different question and can look far healthier,
-        because a year of pension-funded top-ups can already have refilled a
-        bridge that ran dry the year before — including for trials that
-        failed. `None` if there is no DC pension to unlock, or it is already
-        accessible from the first plan-year (nothing to bridge)."""
+        """(10th, 90th) percentile of non-pension assets in the last year before
+        access — how close the bridge itself came to running out, before any
+        pension money could be recycled into it. `None` when there is no DC
+        pension, or it is accessible from the first plan-year."""
         if self.pension_access_year is None:
             return None
         pre_access_year = self.pension_access_year - 1
@@ -191,19 +167,14 @@ def percentile(values: list[float], p: float) -> float:
     return ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo)
 
 
-# ---------------------------------------------------------------------------
-# Caching
-# ---------------------------------------------------------------------------
-
 def _strategy_spec(obj) -> dict | None:
     """Stable identity for a strategy: class name plus its *configuration*.
 
-    Explicitly not `dataclasses.asdict`, for two reasons. It would include
-    `init=False` runtime state (a Guyton-Klinger multiplier, a ladder's seeded
-    flag) whose value depends on how many trials have already run, so the key
-    would drift between identical calls. And for a non-dataclass it silently
-    falls back to an id()-based repr, which changes every process — a bug that
-    disabled this cache entirely once already.
+    Not `dataclasses.asdict`: that would include `init=False` runtime state (a
+    Guyton-Klinger multiplier, a ladder's seeded flag) whose value depends on
+    how many trials have already run, and for a non-dataclass it falls back to
+    an id()-based repr that changes every process — a bug that disabled this
+    cache entirely once already.
     """
     if obj is None:
         return None
@@ -252,9 +223,8 @@ def cache_key(
             "gift_growth_rate": gift_growth_rate,
             "market_stress": [dict(m) for m in scenario.market_stress],
             "pension_access": scenario.pension_access.value,
-            # This block is hand-written, so a new scenario field that changes
-            # an answer and is not added here does not error -- it silently
-            # returns another scenario's cached result.
+            # Hand-written: a new scenario field that changes an answer and is
+            # not added here silently returns another scenario's cached result.
             "death_ages": dict(sorted((scenario.death_ages or {}).items())),
             "care": scenario.care.spec() if scenario.care else None,
             "income_annuity": scenario.income_annuity.spec() if scenario.income_annuity else None,
@@ -294,10 +264,6 @@ def _result_from_json(blob: str) -> SimulationResult:
     return SimulationResult(**raw)
 
 
-# ---------------------------------------------------------------------------
-# The run
-# ---------------------------------------------------------------------------
-
 def _death_index(age_at_death: int, age_now: int, n_years: int) -> int:
     """Plan-year index from which a person is no longer alive.
 
@@ -333,21 +299,16 @@ class StaleTaxRulesWarning(UserWarning):
     """The tax figures behind a projection have not been re-checked recently."""
 
 
-#: How long tax figures stay trustworthy without re-checking. A UK tax year,
-#: because that is the cadence at which rates actually move.
 TAX_VERIFICATION_MAX_AGE_DAYS = 366
+"""A UK tax year: the cadence at which rates actually move."""
 
 
 def warn_if_tax_rules_stale(tax: TaxSystem, iht: IHTRules, as_of: date) -> None:
     """Warn when a tax system's figures are older than a tax year.
 
-    "Verify rates against gov.uk" spent a long time sitting in prose, where it
-    was agreed with and not done. Emitting a warning does not make anyone
-    verify anything either, but it does mean the omission appears in the output
-    next to the numbers it affects, rather than only in the reader's judgement.
-
-    Deliberately raised before the cache is consulted: a cached result is
-    exactly the case where nobody is looking at the tax module.
+    Raised before the cache is consulted, because a cached result is exactly the
+    case where nobody is looking at the tax module. It puts the omission next to
+    the numbers it affects rather than leaving it to the reader's judgement.
     """
     for label, rules in (("tax", tax), ("iht", iht)):
         verified_on = getattr(rules, "verified_on", None)
@@ -363,6 +324,48 @@ def warn_if_tax_rules_stale(tax: TaxSystem, iht: IHTRules, as_of: date) -> None:
                 StaleTaxRulesWarning,
                 stacklevel=3,
             )
+
+
+def _slots_by_asset_type(plan) -> dict[str, list[int]]:
+    """Slots grouped by wrapper type (isa/gia/pension/cash/property), not by
+    asset class: a bond holding here is just an asset whose `ReturnModel`
+    samples `gov_bonds`. The three synthetic reserves carry no `AssetType` of
+    their own and group under `"cash"` — including the bond reserve, which is a
+    real volatile bond holding despite the label.
+    """
+    by_type: dict[str, list[int]] = {}
+    for slot, asset in enumerate(plan.assets):
+        by_type.setdefault(asset.type.value, []).append(slot)
+    by_type.setdefault(AssetType.CASH.value, []).extend(
+        [plan.cash_slot, plan.ladder_slot, plan.bond_slot]
+    )
+    return by_type
+
+
+def _sample_deaths(
+    household: Household,
+    scenario: Scenario,
+    ages_now: dict[str, int],
+    n_years: int,
+    rng: random.Random,
+) -> dict[str, int]:
+    """When each person dies in this trial, as a plan-year index.
+
+    Drawn from the same rng as the returns, so a seed still reproduces a run,
+    and independently between people — see `mortality.py` for why that is the
+    conservative choice. A `scenario.death_ages` entry pins the age, but the
+    draw still happens, so pinning one person does not reshuffle the return
+    path and turn an attributable comparison into noise.
+    """
+    mortality = household.assumptions.mortality
+    deaths = {}
+    for person in household.people:
+        sampled = mortality.sample_age_at_death(ages_now[person.name], person.sex, rng)
+        pinned = (scenario.death_ages or {}).get(person.name)
+        deaths[person.name] = _death_index(
+            sampled if pinned is None else pinned, ages_now[person.name], n_years
+        )
+    return deaths
 
 
 def run_monte_carlo(
@@ -412,8 +415,6 @@ def run_monte_carlo(
     isa_names = [a.name for a in household.assets_of(AssetType.ISA)]
     pension_names = [a.name for a in household.assets_of(AssetType.DC_PENSION)]
 
-    # The bridge: everything outside a pension, since that -- not total
-    # wealth -- is what actually funds a retirement before pension access.
     dc_slots = {s for slots in plan.dc_slots_by_person.values() for s in slots}
     bridge_slots = tuple(s for s in plan.investable_slots if s not in dc_slots)
     pension_access_year = (
@@ -421,42 +422,22 @@ def run_monte_carlo(
         if dc_slots else None
     )
 
-    # The asset-mix breakdown: every slot's balance, grouped by AssetType.
-    # This is a wrapper-type breakdown (isa/gia/pension/cash/property), not
-    # an asset-class one -- there is no separate "bonds" category anywhere in
-    # this engine, a bond holding is just an asset whose ReturnModel happens
-    # to sample gov_bonds. The cash reserve, ladder reserve and bond reserve
-    # are all synthetic (not in plan.assets, so they carry no AssetType of
-    # their own) and are grouped under "cash" for the same reason -- the bond
-    # reserve is a real, volatile bond holding despite the label, which a
-    # reader of `asset_type_percentiles["cash"]` should know.
-    slots_by_type: dict[str, list[int]] = {}
-    for slot, asset in enumerate(plan.assets):
-        slots_by_type.setdefault(asset.type.value, []).append(slot)
-    slots_by_type.setdefault(AssetType.CASH.value, []).extend(
-        [plan.cash_slot, plan.ladder_slot, plan.bond_slot]
-    )
+    slots_by_type = _slots_by_asset_type(plan)
 
-    # The household ends at the second death. Under a fixed life expectancy
-    # that is known up front; with mortality sampled it differs per trial, so
-    # both the settle date and the eroded IHT bands are resolved inside the
-    # loop below and these are only the fallback for a trial-free read.
+    # The second death settles the estate. Sampled mortality moves it per trial,
+    # so these are only the fallback for a trial-free read; the loop below
+    # re-resolves both the settle date and the eroded bands each time.
     base_iht = iht
     second_death_index = min(
         plan.n_years - 1, max(plan.death_index_by_person.values(), default=plan.n_years) - 1
     )
     settle_date = plan.years[second_death_index].end
     final_date = settle_date
-    # The nil-rate bands are frozen in nominal terms too, and on a different
-    # horizon from income tax. Scaled at the point of use rather than by
-    # mutating `UK_IHT`, which stays a pure constant. This is the omission
-    # that flatters an estate worst: a £650,000 shelter frozen while wealth
-    # grows in real terms shrinks every year it is left alone.
     trial_iht = _iht_at(base_iht, household.assumptions.fiscal_drag, as_of, settle_date)
-    # Gifts are compared against a terminal estate, so they must be carried
-    # to the same date. 0.0 values them as spent on receipt; setting this to
+    # Gifts are compared against a terminal estate, so they are carried to the
+    # same date. A `gift_growth_rate` of 0.0 values them as spent on receipt;
     # the portfolio's real growth rate assumes the recipient invests instead.
-    # Neither is "right" — it depends on what the children actually do.
+    # Neither is right — it depends on what the children actually do.
     gift_history = [(g.on, g.amount) for g in scenario.gifts]
     gift_value_history = [
         (g.on, g.amount * (1 + gift_growth_rate) ** max(0.0, (final_date - g.on).days / 365.25))
@@ -483,32 +464,11 @@ def run_monte_carlo(
     care_paid: list[float] = []
     alive_counts: list[int] = [0] * plan.n_years
 
-    mortality = household.assumptions.mortality
     ages_now = plan.years[0].ages
 
     for _ in range(n_trials):
         path = sampler.path(data, plan.series_keys, plan.n_years, rng)
-        # Sampled per trial, from the same rng as the returns, so a seed still
-        # reproduces a run exactly. Independent between the two people -- see
-        # `mortality.py` for why that is the conservative choice here.
-        # `scenario.death_ages` pins a person's death instead of sampling it.
-        # The rng is still drawn from for everyone, pinned or not, so that
-        # adding a pinned age does not reshuffle the return path and turn an
-        # attributable comparison into noise.
-        deaths = {}
-        for person in household.people:
-            sampled = mortality.sample_age_at_death(
-                ages_now[person.name], person.sex, rng
-            )
-            pinned = (scenario.death_ages or {}).get(person.name)
-            deaths[person.name] = _death_index(
-                sampled if pinned is None else pinned,
-                ages_now[person.name],
-                plan.n_years,
-            )
-        # Whether care is needed is sampled per person per trial, from the
-        # same rng as the returns and the deaths, so a seed still reproduces
-        # a run exactly. Off unless the scenario asks for it.
+        deaths = _sample_deaths(household, scenario, ages_now, plan.n_years, rng)
         care_needs = scenario.care.sample_needs(household.people, rng) if scenario.care else None
         projection = project(plan, path, rng, deaths=deaths, care_needs=care_needs)
         if any(y.care_state_funded > 0 for y in projection.years):
@@ -524,11 +484,10 @@ def run_monte_carlo(
         else:
             shortfall_years.append(projection.first_shortfall_year)  # type: ignore[arg-type]
 
-        # Living years only. A post-death year spends nothing, so pooling
-        # every year would drag `median_annual_spend` toward zero and collapse
-        # `worst_case_5pct_min_spend` to exactly zero for every trial -- both
-        # silently, and both looking like a catastrophic plan rather than a
-        # statistic counting years in which nobody was alive to spend.
+        # Living years only: pooling post-death years would drag
+        # `median_annual_spend` toward zero and collapse
+        # `worst_case_5pct_min_spend` to zero for every trial, which reads as a
+        # catastrophic plan rather than as years with nobody alive to spend.
         spends = [y.total_spending for y in projection.years if y.alive]
         if spends:
             all_spend.extend(spends)
@@ -543,10 +502,9 @@ def run_monte_carlo(
             bridge_by_year[i].append(sum(y.balances[plan.slot_names[s]] for s in bridge_slots))
             for t, slots in slots_by_type.items():
                 asset_type_by_year[t][i].append(sum(y.balances[plan.slot_names[s]] for s in slots))
-        # Read at the second death, not the end of the horizon: the estate is
-        # settled when the household ends. The spouse exemption makes the
-        # first death IHT-free, so there is nothing to do there -- which is
-        # the whole point of taxing only once, at the end.
+        # Read at the second death, not the end of the horizon: the spouse
+        # exemption makes the first death IHT-free, so the estate is taxed once,
+        # when the household ends.
         settle = projection.years[second_death_index]
         estate = settle.total_wealth
         pension_left = sum(settle.balances[n] for n in pension_names)

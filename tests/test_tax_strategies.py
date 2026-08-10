@@ -386,7 +386,7 @@ class TestTaxEfficientOrder:
         own £20,000; Sam has no pension of their own, only an ISA. The
         excess should keep filling Sam's ISA rather than stop once Alex's
         own headroom is used, the same interspousal-gift-in-effect logic
-        `_bed_and_isa`/`_invest_for_person` already apply elsewhere."""
+        `_Accounts.bed_and_isa`/`invest_for` already apply elsewhere."""
         household = Household(
             people=[Person("Alex", date(1960, 1, 1)), Person("Sam", date(1960, 1, 1))],
             expenses=[Expense("Living", 5_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],

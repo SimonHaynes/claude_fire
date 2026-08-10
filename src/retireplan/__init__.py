@@ -80,9 +80,9 @@ from .strategies import (
 )
 from .tax.iht import UK_IHT, BequestBreakdown, IHTRules, effective_pension_death_rate
 from .tax.uk import UK, UKTaxSystem
-# Exported because scenario files need it: a retirement date bounded by a
-# notice period has to be computed from `as_of`, not typed as a literal, or a
-# plan regenerated later stays pinned to when it was first written.
+# Exported because a scenario's retirement date must be computed from `as_of`,
+# not typed as a literal, or a plan regenerated later stays pinned to the date
+# it was first written.
 from .timeline import add_months, add_years, age_on
 
 __all__ = [
@@ -99,11 +99,13 @@ __all__ = [
     # engine
     "Plan", "PlanYear", "compile_plan", "Projection", "YearResult", "project",
     "Scenario", "OneOffSpend", "Gift", "PensionLumpSum", "IncomeAnnuity",
+    "SimulationResult", "run_monte_carlo", "project_once",
     # care
-    "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest", "SimulationResult", "run_monte_carlo", "project_once",
+    "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest",
     # strategies
-    "BondTent", "ByAssetTypeMix", "CashBondLadder", "GlidePath",
-    "GuytonKlinger", "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal", "StandardOrder", "StaticMix", "TaxEfficientOrder", "ThreeBucketStrategy",
+    "BondTent", "ByAssetTypeMix", "CashBondLadder", "GlidePath", "GuytonKlinger",
+    "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal",
+    "StandardOrder", "StaticMix", "TaxEfficientOrder", "ThreeBucketStrategy",
     # tax
     "UK", "UKTaxSystem", "UK_IHT", "IHTRules", "BequestBreakdown",
     "effective_pension_death_rate",

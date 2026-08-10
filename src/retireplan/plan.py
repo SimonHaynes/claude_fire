@@ -1,14 +1,9 @@
 """Compiling a household + scenario into a `Plan`.
 
-Everything that does *not* depend on market returns — who is working, what
-they earn, what tax band that puts them in, what the household spends, when
-debts clear, when a bond matures, when a pension unlocks — is computed once,
-here, into a list of `PlanYear` records.
-
-That is the difference between a Monte Carlo run that takes a minute and one
-that takes ten seconds: a 2,000-trial simulation used to redo every date
-comparison and expense lookup 2,000 times over. Only balances actually vary
-between trials, so only balances belong in the hot loop.
+Everything independent of market returns — earnings, tax band, spending, debt
+payoff, maturities, pension access — is resolved once here into `PlanYear`
+records. Only balances vary between trials, so only balances belong in the hot
+loop; precomputing the rest is what makes a 2,000-trial run seconds not minutes.
 """
 from __future__ import annotations
 
@@ -25,7 +20,9 @@ from .model import (
     FiscalDrag,
     Frequency,
     Household,
+    IncomeSource,
     IncomeType,
+    Person,
     Phase,
 )
 from .mortality import FixedAge
@@ -36,17 +33,19 @@ from .timeline import add_years, age_on, debt_payment_schedule, earliest, latest
 CASH_RESERVE = "__cash_reserve"
 LADDER_RESERVE = "__ladder_reserve"
 BOND_RESERVE = "__bond_reserve"
-"""A second reserve slot, distinct from `LADDER_RESERVE`: that one grows at a
-strategy-chosen fixed real rate, this one is meant to earn a real sampled
-series (`gov_bonds`, typically) via `DrawdownContext.bond_return`, for a
-genuine three-bucket strategy where the middle tier is actual bonds rather
-than another cash-like reserve. See `ThreeBucketStrategy`."""
+"""Distinct from `LADDER_RESERVE`, which grows at a strategy-chosen fixed real
+rate: this one earns a sampled series via `DrawdownContext.bond_return`, so a
+three-bucket middle tier can be actual bonds. See `ThreeBucketStrategy`."""
 SURPLUS_GIA_NAME = "{name} — Surplus GIA (Global Tracker)"
 SURPLUS_ISA_NAME = "{name} — Surplus ISA (Global Tracker)"
 
 
 def _annual(amount: float, frequency: Frequency) -> float:
     return amount * 12 if frequency is Frequency.MONTHLY else amount
+
+
+def _add(bucket: dict, key, amount: float) -> None:
+    bucket[key] = bucket.get(key, 0.0) + amount
 
 
 @dataclass(frozen=True)
@@ -63,46 +62,38 @@ class PlanYear:
     dc_accessible_by_person: dict[str, bool]
 
     tax: TaxSystem
-    """This year's tax system, not the household's.
-
-    Thresholds frozen in nominal terms shrink in real ones, so the bands a
-    projection faces in 2050 are not the bands it faces today. Resolving that
-    here rather than in `cashflow` keeps it market-independent -- it is the
-    same for every trial -- and means fiscal drag reaches income tax, NI, the
-    pension gross-up, CGT, dividend tax, the ISA allowance and the PCLS cap
-    without a single strategy having to know about it."""
+    """This year's tax system, not the household's: nominally frozen thresholds
+    shrink in real terms. Resolving it here keeps it market-independent and
+    reaches income tax, NI, the pension gross-up, CGT, dividend tax, the ISA
+    allowance and the PCLS cap without any strategy knowing about it."""
 
     alive: frozenset[str]
-    """Who is still living this plan-year.
 
-    Deaths only ever remove people, so `compile_plan` precomputes one year
-    tuple per alive-set rather than adjusting per trial -- see
-    `Plan.year_variants`."""
+    salary_gross_by_person: dict[str, float]
+    """Before salary sacrifice; reporting only. `employment_income_by_person`
+    is after sacrifice, and is the NI-able figure."""
+    employment_income_by_person: dict[str, float]
 
-    salary_gross_by_person: dict[str, float]     # before salary sacrifice (reporting only)
-    employment_income_by_person: dict[str, float]  # after sacrifice: the NI-able figure
-
-    # Taxable income kept in three buckets rather than one, because they
-    # behave differently when someone dies: a State Pension stops outright and
-    # does not transfer, a DB pension usually continues to the survivor at a
-    # reduced rate, and rental or other unearned income passes whole under the
-    # spouse exemption. Summed together they were indistinguishable, and a
-    # first-death model would have halved rental income by accident.
     db_income_by_person: dict[str, float]
+    """Taxable income is split three ways because death treats it three ways: a
+    State Pension stops and does not transfer, a DB pension continues to the
+    survivor at `db_survivor_fraction`, other income passes whole under the
+    spouse exemption. Recombine with `other_taxable_by_person`."""
     state_pension_by_person: dict[str, float]
     taxable_other_by_person: dict[str, float]
 
     tax_free_income_by_person: dict[str, float]
-    """Per person, not a household total: a tax-free income belonging to
-    someone who has died must stop being paid to a household that no longer
-    contains them."""
+    """Per person, not a household total: income belonging to someone who has
+    died must stop being paid to a household that no longer contains them."""
 
-    contributions: tuple[tuple[int, float], ...]   # (asset slot, amount into it this year)
+    contributions: tuple[tuple[int, float], ...]
+    """(asset slot, amount paid in this year)."""
     lump_sums_by_person: dict[str, float]
-    """DB pension lump sums (e.g. a Teachers' Pension retirement lump sum),
-    by whose entitlement it is. Invested for that person (ISA then GIA), not
-    pooled into shared cash -- see `cashflow.py`'s `_invest_for_person`."""
-    maturities: tuple[tuple[int, int | None], ...]  # (from slot, rollover-to slot or None)
+    """DB retirement lump sums, by whose entitlement they are. Invested for that
+    person (ISA then GIA), not pooled into shared cash — see
+    `cashflow._Accounts.invest_for`."""
+    maturities: tuple[tuple[int, int | None], ...]
+    """(maturing slot, rollover-to slot or None)."""
 
     essential: float
     nominal_discretionary: float
@@ -112,10 +103,9 @@ class PlanYear:
     gifts: float
 
     care_cost: float = 0.0
-    """Set per trial by `project`, not at compile time: whether care happens
-    is sampled, so it cannot be precomputed the way the rest of the schedule
-    is. Held apart from `essential` on purpose -- it is fixed spending no
-    withdrawal rule may cut, but a cash ladder must not size against it."""
+    """Sampled, so `project` sets it per trial rather than compile time. Kept
+    out of `essential` because a cash ladder must not size against it, though
+    no withdrawal rule may cut it."""
 
     @property
     def fixed_spend(self) -> float:
@@ -127,11 +117,6 @@ class PlanYear:
 
     @property
     def other_taxable_by_person(self) -> dict[str, float]:
-        """DB pension, State Pension and other taxable income, recombined.
-
-        The three are stored separately because they behave differently on a
-        death; everything downstream that only needs the total reads it here.
-        """
         names = (
             set(self.db_income_by_person)
             | set(self.state_pension_by_person)
@@ -202,21 +187,15 @@ class Plan:
     series_keys: frozenset[str]
 
     year_variants: dict[frozenset[str], tuple[PlanYear, ...]]
-    """One full year schedule per alive-set.
-
-    Deaths only remove people, so for a couple there are three schedules worth
-    having (both, one, the other) plus the empty one -- built once here rather
-    than adjusted on every trial. `project` then picks a year with a dict
-    lookup and an index, which keeps the compile-once/run-many split intact
-    instead of pushing per-year work back into the hot loop."""
+    """One full year schedule per alive-set. Deaths only remove people, so all
+    2^n schedules are built once here and `project` picks one with a dict
+    lookup, keeping per-year work out of the hot loop."""
 
     slots_by_variant: dict[frozenset[str], "SlotMaps"]
-    """Pot ownership per alive-set, with a dead person's pensions, ISAs and
-    GIAs re-keyed to the survivor.
-
-    Without this a drawdown strategy keeps drawing from the deceased's pension
-    and stacking it against *their* tax bands -- reusing a personal allowance
-    and a basic-rate band that no longer exist, every year, invisibly."""
+    """Pot ownership per alive-set, with a dead person's pensions, ISAs and GIAs
+    re-keyed to the survivor. Otherwise a drawdown strategy keeps drawing from
+    the deceased's pension against a personal allowance and basic-rate band that
+    no longer exist."""
 
     death_index_by_person: dict[str, int]
     """Plan-year in which each person dies, under this scenario's assumptions.
@@ -233,31 +212,24 @@ class Plan:
         return self.slot_names.index(name)
 
 
-#: Beyond this many people the alive-set variants (2^n) stop being cheap.
-#: Two is the case this exists for; the guard is here so a larger household
-#: fails loudly rather than quietly building 64 schedules.
 MAX_PEOPLE_FOR_VARIANTS = 4
+"""Alive-set variants cost 2^n schedules; beyond this a household should fail
+loudly rather than quietly build 64 of them."""
 
 
 def _survivor_year(year: PlanYear, alive: frozenset[str], assumptions) -> PlanYear:
     """`year` as it would be with only `alive` still living.
 
-    The dead person's salary and State Pension stop outright -- a State
-    Pension does not transfer. Their DB pension continues to the survivor at
-    `db_survivor_fraction`, and their rental and tax-free income pass whole
-    under the spouse exemption. All of it is re-keyed to a survivor's name
-    rather than left under the deceased's, because income sitting under a dead
-    person's name would keep drawing on a personal allowance and a basic-rate
-    band that no longer exist.
-
-    Spending falls, but not by half: see `Assumptions.survivor_*_factor`.
-    Debt payments, one-offs and gifts do not fall at all.
+    Surviving income is re-keyed to the heir rather than left under the
+    deceased's name, which would keep drawing on a personal allowance and a
+    basic-rate band that no longer exist. Spending falls by
+    `Assumptions.survivor_*_factor`; debt, one-offs and gifts do not fall.
     """
     dead = set(year.alive) - set(alive)
     if not dead:
         return year
     if not alive:
-        # Nobody left: no income, no spending. The estate is settled elsewhere.
+        # The estate is settled elsewhere; this year just goes quiet.
         return dataclasses.replace(
             year, alive=alive,
             salary_gross_by_person={}, employment_income_by_person={},
@@ -268,9 +240,8 @@ def _survivor_year(year: PlanYear, alive: frozenset[str], assumptions) -> PlanYe
             one_off=0.0, gifts=0.0,
         )
 
-    # Whoever inherits. With one survivor this is unambiguous; with more, the
-    # eldest simply keeps the bookkeeping deterministic -- the tax difference
-    # between recipients is a refinement this does not attempt.
+    # With more than one survivor, first-by-name only keeps this deterministic;
+    # the tax difference between recipients is a refinement not attempted here.
     heir = sorted(alive)[0]
 
     def drop_dead(source: dict[str, float]) -> dict[str, float]:
@@ -399,6 +370,255 @@ def _tax_by_year(
     return by_index
 
 
+@dataclass(frozen=True)
+class _Ledger:
+    """Where every asset sits in the flat balance list."""
+
+    assets: tuple[Asset, ...]
+    slot_names: tuple[str, ...]
+    slot_of: dict[str, int]
+    opening: tuple[float, ...]
+    isa_slots: tuple[int, ...]
+    isa_slots_by_person: dict[str, tuple[int, ...]]
+    dc_slots_by_person: dict[str, tuple[int, ...]]
+    gia_slots_by_person: dict[str, tuple[int, ...]]
+    investable_slots: tuple[int, ...]
+
+
+def _surplus_shelters(household: Household, people: dict[str, Person]) -> list[Asset]:
+    """Empty ISA and GIA slots for future surplus income to land in.
+
+    A GIA for everyone; an ISA only for those without one, since an ISA has a
+    real subscription limit and a household that already models one should not
+    gain a second. Both open at zero and are never backdated. Without them a
+    client who holds no ISA today has nowhere to shelter surplus income, a PCLS
+    or a Bed-and-ISA — `credit_isa` and Bed-and-ISA no-op on zero headroom,
+    so the money would sit taxed for the whole plan. Holding no ISA is a fact
+    about the client's past, not a ceiling on what the plan may consider.
+    """
+    def shelter(name: str, template: str, type_: AssetType) -> Asset:
+        return Asset(
+            template.format(name=name), type_, name, 0.0,
+            returns=SampledSeries("global_equity"),
+        )
+
+    already_holds_isa = {a.owner for a in household.assets_of(AssetType.ISA)}
+    return [
+        shelter(name, SURPLUS_ISA_NAME, AssetType.ISA)
+        for name in people if name not in already_holds_isa
+    ] + [
+        shelter(name, SURPLUS_GIA_NAME, AssetType.GIA) for name in people
+    ]
+
+
+def _ledger_layout(household: Household, people: dict[str, Person]) -> _Ledger:
+    spendable = [a for a in household.assets if a.type is not AssetType.DB_PENSION]
+    spendable += _surplus_shelters(household, people)
+
+    slot_names = [a.name for a in spendable] + [CASH_RESERVE, LADDER_RESERVE, BOND_RESERVE]
+    slot_of = {name: i for i, name in enumerate(slot_names)}
+
+    def slots_owned(type_: AssetType) -> dict[str, tuple[int, ...]]:
+        return {
+            name: tuple(
+                slot_of[a.name] for a in spendable if a.type is type_ and a.owner == name
+            )
+            for name in people
+        }
+
+    isa_slots = tuple(slot_of[a.name] for a in spendable if a.type is AssetType.ISA)
+    dc_by_person = slots_owned(AssetType.DC_PENSION)
+    gia_by_person = slots_owned(AssetType.GIA)
+    return _Ledger(
+        assets=tuple(spendable),
+        slot_names=tuple(slot_names),
+        slot_of=slot_of,
+        opening=tuple([a.value for a in spendable] + [0.0, 0.0, 0.0]),
+        isa_slots=isa_slots,
+        isa_slots_by_person=slots_owned(AssetType.ISA),
+        dc_slots_by_person=dc_by_person,
+        gia_slots_by_person=gia_by_person,
+        investable_slots=tuple(sorted(
+            {slot_of[CASH_RESERVE], slot_of[LADDER_RESERVE], slot_of[BOND_RESERVE]}
+            | set(isa_slots)
+            | {s for slots in dc_by_person.values() for s in slots}
+            | {s for slots in gia_by_person.values() for s in slots}
+            | {slot_of[a.name] for a in spendable if a.type is AssetType.CASH}
+        )),
+    )
+
+
+@dataclass
+class _YearIncome:
+    salary_gross: dict[str, float] = field(default_factory=dict)
+    employment: dict[str, float] = field(default_factory=dict)
+    taxable_other: dict[str, float] = field(default_factory=dict)
+    tax_free: dict[str, float] = field(default_factory=dict)
+    contributions: dict[int, float] = field(default_factory=dict)
+
+
+def _pay_contributions(
+    into: dict[int, float],
+    ledger: _Ledger,
+    salary: IncomeSource,
+    stop: date | None,
+    start: date,
+    end: date,
+) -> float:
+    """Pay this salary's pension contributions; returns the amount sacrificed."""
+    sacrificed = 0.0
+    for asset in ledger.assets:
+        if asset.contributions is None or asset.owner != salary.owner:
+            continue
+        # A Contribution's own window narrows the salary's rather than replacing
+        # it: Coast FIRE stops contributing while the salary (and its tax and NI)
+        # carries on, and a contribution cannot outlive the salary funding it.
+        lower = latest(salary.start, asset.contributions.start)
+        upper = earliest(salary.end, stop, asset.contributions.end)
+        fraction = overlap_fraction(start, end, lower, upper)
+        if fraction <= 0:
+            continue
+        employee = asset.contributions.employee_monthly * 12 * fraction
+        employer = asset.contributions.employer_monthly * 12 * fraction
+        _add(into, ledger.slot_of[asset.name], employee + employer)
+        sacrificed += employee
+    return sacrificed
+
+
+def _income_for_year(
+    household: Household,
+    ledger: _Ledger,
+    retirement: dict[str, date],
+    index: int,
+    start: date,
+    end: date,
+) -> _YearIncome:
+    year = _YearIncome()
+    for income in household.incomes:
+        stop = retirement.get(income.owner) if income.stops_at_retirement else None
+        fraction = overlap_fraction(start, end, income.start, earliest(income.end, stop))
+        if fraction <= 0:
+            continue
+        amount = (
+            _annual(income.amount, income.frequency)
+            * (1 + income.annual_real_growth) ** index
+            * fraction
+        )
+        if income.type is IncomeType.TAX_FREE:
+            _add(year.tax_free, income.owner, amount)
+        elif income.type is IncomeType.TAXABLE:
+            _add(year.taxable_other, income.owner, amount)
+        else:
+            _add(year.salary_gross, income.owner, amount)
+            sacrificed = _pay_contributions(
+                year.contributions, ledger, income, stop, start, end
+            )
+            _add(year.employment, income.owner, amount - sacrificed)
+    return year
+
+
+def _db_entitlements_for_year(
+    db_assets: list[Asset],
+    people: dict[str, Person],
+    start: date,
+    end: date,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """This year's DB pension income and any lump sum falling due in it."""
+    income: dict[str, float] = {}
+    lump_sums: dict[str, float] = {}
+    for asset in db_assets:
+        db = asset.defined_benefit
+        assert db is not None  # guaranteed by Asset.__post_init__
+        db_start = add_years(people[asset.owner].date_of_birth, db.start_age)
+        fraction = overlap_fraction(start, end, db_start, None)
+        if fraction > 0:
+            _add(income, asset.owner, db.annual_amount * fraction)
+        if db.lump_sum and start <= db_start < end:
+            _add(lump_sums, asset.owner, db.lump_sum)
+    return income, lump_sums
+
+
+def _state_pension_for_year(
+    people: dict[str, Person],
+    assumptions: Assumptions,
+    payable_from: dict[str, date],
+    start: date,
+    end: date,
+) -> dict[str, float]:
+    paid: dict[str, float] = {}
+    for name, person in people.items():
+        fraction = overlap_fraction(start, end, payable_from[name], None)
+        if fraction > 0 and person.full_state_pension:
+            paid[name] = assumptions.state_pension_annual * fraction
+    return paid
+
+
+def _spending_for_year(
+    household: Household,
+    scenario: Scenario,
+    household_retirement: date | None,
+    start: date,
+    end: date,
+) -> tuple[float, float]:
+    """Essential and discretionary spending, the latter already multiplied."""
+    essential = 0.0
+    discretionary = 0.0
+    for expense in household.expenses:
+        exp_start, exp_end = expense.start, expense.end
+        if expense.phase is Phase.PRE_RETIREMENT:
+            exp_end = earliest(exp_end, household_retirement)
+        elif expense.phase is Phase.RETIREMENT:
+            exp_start = household_retirement
+            if expense.years_from_retirement is not None and household_retirement is not None:
+                exp_end = earliest(
+                    exp_end, add_years(household_retirement, expense.years_from_retirement)
+                )
+        fraction = overlap_fraction(start, end, exp_start, exp_end)
+        if fraction <= 0:
+            continue
+        amount = _annual(expense.amount, expense.frequency) * fraction
+        if expense.category is ExpenseCategory.ESSENTIAL:
+            essential += amount
+        else:
+            discretionary += amount * scenario.spending_multiplier
+    return essential, discretionary
+
+
+def _last_year_index(
+    people: dict[str, Person],
+    assumptions: Assumptions,
+    as_of: date,
+) -> int:
+    """How far the projection runs.
+
+    Sampled mortality needs a horizon covering the oldest age anyone *could*
+    reach, not the age they are expected to reach: every trial runs the full
+    length with the estate frozen after the last death, which is what keeps
+    percentile bands well-defined across trials that end at different times.
+    """
+    horizon_age = (
+        assumptions.life_expectancy_age
+        if isinstance(assumptions.mortality, FixedAge)
+        else assumptions.max_age
+    )
+    return max([0, *(
+        (add_years(p.date_of_birth, horizon_age) - as_of).days // 365
+        for p in people.values()
+    )])
+
+
+def _debt_payments_by_index(household: Household, as_of: date) -> dict[int, float]:
+    by_index: dict[int, float] = {}
+    for debt in household.debts:
+        remaining = (
+            debt.remaining_months if debt.remaining_months is not None
+            else months_remaining(as_of, debt.last_payment)
+        )
+        for i, amount in enumerate(debt_payment_schedule(debt.monthly_payment, remaining)):
+            _add(by_index, i, amount)
+    return by_index
+
+
 def compile_plan(
     household: Household,
     scenario: Scenario,
@@ -422,221 +642,28 @@ def compile_plan(
         name: add_years(p.date_of_birth, assumptions.state_pension_age) for name, p in people.items()
     }
 
-    # --- ledger layout -----------------------------------------------------
-    spendable = [a for a in household.assets if a.type is not AssetType.DB_PENSION]
-
-    # A synthetic ISA per person who does not already have an explicit one --
-    # unlike the GIA below, an ISA is not added unconditionally, because it
-    # has a real annual subscription limit and a household that already
-    # models one should not gain a second, mostly-dead slot alongside it.
-    # Without this, a household intake built with no ISA `Asset` (because the
-    # client currently holds none) has nowhere for surplus income, a PCLS, or
-    # Bed-and-ISA to ever shelter money -- not a modelling choice, a silent
-    # gap: `credit_isa` and `_bed_and_isa` both no-op with zero ISA headroom
-    # rather than erroring, so the money just sits in the GIA, taxed, for the
-    # whole plan. Not currently holding an ISA is a fact about the client's
-    # past, not a ceiling on what the plan can consider -- anyone can open
-    # one, so the engine now always makes it possible to.
-    people_with_isa = {a.owner for a in household.assets_of(AssetType.ISA)}
-    surplus_isa = [
-        Asset(SURPLUS_ISA_NAME.format(name=name), AssetType.ISA, name, 0.0,
-              returns=SampledSeries("global_equity"))
-        for name in people
-        if name not in people_with_isa
-    ]
-    spendable = spendable + surplus_isa
-
-    # A synthetic GIA per person, present whether or not the household has an
-    # explicit one, so surplus income above ISA headroom always has somewhere
-    # to go instead of sitting idle in cash -- see `SURPLUS_GIA_NAME` and
-    # `project()`'s surplus-sweep. Opens at zero: it is funded only by future
-    # surplus, never backdated.
-    surplus_gia = [
-        Asset(SURPLUS_GIA_NAME.format(name=name), AssetType.GIA, name, 0.0,
-              returns=SampledSeries("global_equity"))
-        for name in people
-    ]
-    spendable = spendable + surplus_gia
-
-    slot_names = [a.name for a in spendable] + [CASH_RESERVE, LADDER_RESERVE, BOND_RESERVE]
-    slot_of = {name: i for i, name in enumerate(slot_names)}
-    opening = [a.value for a in spendable] + [0.0, 0.0, 0.0]
-
-    isa_slots = tuple(slot_of[a.name] for a in spendable if a.type is AssetType.ISA)
-    isa_slots_by_person: dict[str, tuple[int, ...]] = {
-        name: tuple(slot_of[a.name] for a in spendable if a.type is AssetType.ISA and a.owner == name)
-        for name in people
-    }
-    dc_slots: dict[str, tuple[int, ...]] = {
-        name: tuple(
-            slot_of[a.name]
-            for a in spendable
-            if a.type is AssetType.DC_PENSION and a.owner == name
-        )
-        for name in people
-    }
-    gia_slots_by_person: dict[str, tuple[int, ...]] = {
-        name: tuple(slot_of[a.name] for a in spendable if a.type is AssetType.GIA and a.owner == name)
-        for name in people
-    }
-    investable = tuple(
-        sorted(
-            {slot_of[CASH_RESERVE], slot_of[LADDER_RESERVE], slot_of[BOND_RESERVE]}
-            | set(isa_slots)
-            | {s for slots in dc_slots.values() for s in slots}
-            | {s for slots in gia_slots_by_person.values() for s in slots}
-            | {slot_of[a.name] for a in spendable if a.type is AssetType.CASH}
-        )
-    )
-
-    series_keys = frozenset({"inflation"}).union(
-        *(a.returns.series_keys() for a in spendable)
-    ) if spendable else frozenset({"inflation"})
-    series_keys |= scenario.series_keys()
-
-    # --- horizon -----------------------------------------------------------
-    # With mortality sampled, the horizon has to cover the oldest age anyone
-    # could reach, not the age they are expected to reach -- every trial runs
-    # the full length with the estate frozen after the second death, which is
-    # what keeps percentile bands well-defined across trials of different
-    # actual lengths. With `FixedAge` the horizon is unchanged.
-    horizon_age = (
-        assumptions.life_expectancy_age
-        if isinstance(assumptions.mortality, FixedAge)
-        else assumptions.max_age
-    )
-    last_index = 0
-    for p in people.values():
-        end_of_life = add_years(p.date_of_birth, horizon_age)
-        last_index = max(last_index, (end_of_life - as_of).days // 365)
-
-    debt_by_index: dict[int, float] = {}
-    for debt in household.debts:
-        remaining = (
-            debt.remaining_months if debt.remaining_months is not None
-            else months_remaining(as_of, debt.last_payment)
-        )
-        for i, amount in enumerate(debt_payment_schedule(debt.monthly_payment, remaining)):
-            debt_by_index[i] = debt_by_index.get(i, 0.0) + amount
-
+    ledger = _ledger_layout(household, people)
     db_assets = household.assets_of(AssetType.DB_PENSION)
 
-    drag = assumptions.fiscal_drag
-    tax_by_index = _tax_by_year(tax, drag, as_of, last_index)
+    series_keys = frozenset({"inflation"}).union(
+        *(a.returns.series_keys() for a in ledger.assets)
+    ) if ledger.assets else frozenset({"inflation"})
+    series_keys |= scenario.series_keys()
+
+    last_index = _last_year_index(people, assumptions, as_of)
+    debt_by_index = _debt_payments_by_index(household, as_of)
+    tax_by_index = _tax_by_year(tax, assumptions.fiscal_drag, as_of, last_index)
     everyone = frozenset(people)
 
     years: list[PlanYear] = []
     for i in range(last_index + 1):
         start = as_of if i == 0 else add_years(as_of, i)
         end = add_years(as_of, i + 1)
-        is_retired = household_retirement is not None and start >= household_retirement
 
-        salary_gross: dict[str, float] = {}
-        employment_income: dict[str, float] = {}
-        taxable_other: dict[str, float] = {}
-        db_income: dict[str, float] = {}
-        state_pension: dict[str, float] = {}
-        tax_free: dict[str, float] = {}
-        contributions: dict[int, float] = {}
-
-        # --- income, and the contributions that ride on it ---
-        for income in household.incomes:
-            stop = retirement.get(income.owner) if income.stops_at_retirement else None
-            fraction = overlap_fraction(start, end, income.start, earliest(income.end, stop))
-            if fraction <= 0:
-                continue
-            amount = _annual(income.amount, income.frequency)
-            amount *= (1 + income.annual_real_growth) ** i
-            amount *= fraction
-
-            if income.type is IncomeType.TAX_FREE:
-                tax_free[income.owner] = tax_free.get(income.owner, 0.0) + amount
-                continue
-            if income.type is IncomeType.TAXABLE:
-                taxable_other[income.owner] = taxable_other.get(income.owner, 0.0) + amount
-                continue
-
-            # SALARY: pension contributions are paid only while it is being earned
-            salary_gross[income.owner] = salary_gross.get(income.owner, 0.0) + amount
-            sacrificed = 0.0
-            for asset in spendable:
-                if asset.contributions is None or asset.owner != income.owner:
-                    continue
-                # A Contribution's own start/end narrow the salary's window
-                # rather than replace it -- Coast FIRE stops contributing
-                # while the salary (and its tax and NI) carries on, not the
-                # other way round, and a contribution cannot outlive the
-                # salary that funds it.
-                contrib_lower = latest(income.start, asset.contributions.start)
-                contrib_upper = earliest(income.end, stop, asset.contributions.end)
-                contrib_fraction = overlap_fraction(start, end, contrib_lower, contrib_upper)
-                if contrib_fraction <= 0:
-                    continue
-                employee = asset.contributions.employee_monthly * 12 * contrib_fraction
-                employer = asset.contributions.employer_monthly * 12 * contrib_fraction
-                slot = slot_of[asset.name]
-                contributions[slot] = contributions.get(slot, 0.0) + employee + employer
-                sacrificed += employee
-            employment_income[income.owner] = (
-                employment_income.get(income.owner, 0.0) + amount - sacrificed
-            )
-
-        # --- defined benefit entitlements ---
-        lump_sums: dict[str, float] = {}
-        for asset in db_assets:
-            db = asset.defined_benefit
-            assert db is not None  # guaranteed by Asset.__post_init__
-            db_start = add_years(people[asset.owner].date_of_birth, db.start_age)
-            fraction = overlap_fraction(start, end, db_start, None)
-            if fraction > 0:
-                db_income[asset.owner] = (
-                    db_income.get(asset.owner, 0.0) + db.annual_amount * fraction
-                )
-            if db.lump_sum and start <= db_start < end:
-                lump_sums[asset.owner] = lump_sums.get(asset.owner, 0.0) + db.lump_sum
-
-        # --- state pension ---
-        for name, person in people.items():
-            fraction = overlap_fraction(start, end, state_pension_date[name], None)
-            if fraction > 0 and person.full_state_pension:
-                state_pension[name] = (
-                    state_pension.get(name, 0.0) + assumptions.state_pension_annual * fraction
-                )
-
-        # --- spending ---
-        essential = 0.0
-        discretionary = 0.0
-        for expense in household.expenses:
-            exp_start, exp_end = expense.start, expense.end
-            if expense.phase is Phase.PRE_RETIREMENT:
-                exp_end = earliest(exp_end, household_retirement)
-            elif expense.phase is Phase.RETIREMENT:
-                exp_start = household_retirement
-                if expense.years_from_retirement is not None and household_retirement is not None:
-                    exp_end = earliest(
-                        exp_end, add_years(household_retirement, expense.years_from_retirement)
-                    )
-            fraction = overlap_fraction(start, end, exp_start, exp_end)
-            if fraction <= 0:
-                continue
-            amount = _annual(expense.amount, expense.frequency) * fraction
-            if expense.category is ExpenseCategory.ESSENTIAL:
-                essential += amount
-            else:
-                discretionary += amount * scenario.spending_multiplier
-
-        one_off = sum(
-            item.amount for item in scenario.one_off_spends if start <= item.on < end
-        )
-        gifts = sum(g.amount for g in scenario.gifts if start <= g.on < end)
-
-        maturities = tuple(
-            (
-                slot_of[a.name],
-                slot_of[a.maturity.rollover_to] if a.maturity.rollover_to else None,
-            )
-            for a in spendable
-            if a.maturity is not None and start <= a.maturity.on < end
+        income = _income_for_year(household, ledger, retirement, i, start, end)
+        db_income, lump_sums = _db_entitlements_for_year(db_assets, people, start, end)
+        essential, discretionary = _spending_for_year(
+            household, scenario, household_retirement, start, end
         )
 
         years.append(
@@ -646,31 +673,42 @@ def compile_plan(
                 start=start,
                 end=end,
                 ages={name: age_on(p.date_of_birth, start) for name, p in people.items()},
-                is_retired=is_retired,
+                is_retired=(
+                    household_retirement is not None and start >= household_retirement
+                ),
                 # `end > access_date`, not `start >= access_date`: access begins in
-                # the plan-year the birthday falls in, not the next one. The engine
-                # has no finer resolution than a plan-year, so this can grant access
-                # a few months before the exact day for a birthday early in the
-                # year -- the alternative (the previous behaviour) silently denied
-                # it for up to eleven months after the birthday, which is worse.
+                # the plan-year the birthday falls in. At plan-year resolution that
+                # can grant it a few months early; denying it for up to eleven
+                # months after the birthday is the worse error.
                 dc_accessible=any(end > access_date[n] for n in people),
                 dc_accessible_by_person={n: end > access_date[n] for n in people},
                 tax=tax_by_index[i],
                 alive=everyone,
-                salary_gross_by_person=salary_gross,
-                employment_income_by_person=employment_income,
+                salary_gross_by_person=income.salary_gross,
+                employment_income_by_person=income.employment,
                 db_income_by_person=db_income,
-                state_pension_by_person=state_pension,
-                taxable_other_by_person=taxable_other,
-                tax_free_income_by_person=tax_free,
-                contributions=tuple(sorted(contributions.items())),
+                state_pension_by_person=_state_pension_for_year(
+                    people, assumptions, state_pension_date, start, end
+                ),
+                taxable_other_by_person=income.taxable_other,
+                tax_free_income_by_person=income.tax_free,
+                contributions=tuple(sorted(income.contributions.items())),
                 lump_sums_by_person=lump_sums,
-                maturities=maturities,
+                maturities=tuple(
+                    (
+                        ledger.slot_of[a.name],
+                        ledger.slot_of[a.maturity.rollover_to] if a.maturity.rollover_to else None,
+                    )
+                    for a in ledger.assets
+                    if a.maturity is not None and start <= a.maturity.on < end
+                ),
                 essential=essential,
                 nominal_discretionary=discretionary,
                 debt_payment=debt_by_index.get(i, 0.0),
-                one_off=one_off,
-                gifts=gifts,
+                one_off=sum(
+                    item.amount for item in scenario.one_off_spends if start <= item.on < end
+                ),
+                gifts=sum(g.amount for g in scenario.gifts if start <= g.on < end),
             )
         )
 
@@ -686,7 +724,12 @@ def compile_plan(
         for alive in _alive_sets(everyone)
     }
     slots_by_variant = {
-        alive: _slots_for(alive, isa_slots_by_person, dc_slots, gia_slots_by_person)
+        alive: _slots_for(
+            alive,
+            ledger.isa_slots_by_person,
+            ledger.dc_slots_by_person,
+            ledger.gia_slots_by_person,
+        )
         for alive in _alive_sets(everyone)
     }
 
@@ -694,11 +737,9 @@ def compile_plan(
     for name, person in people.items():
         age = (scenario.death_ages or {}).get(name, assumptions.life_expectancy_age)
         death = add_years(person.date_of_birth, age)
-        # The plan-year the death falls in is the last one they are alive for,
-        # the same plan-year resolution the rest of the engine works at.
-        # Floored at 1 to match the horizon, which is floored at index 0: a
-        # household already past its stated life expectancy still gets the one
-        # year the plan runs for, rather than being dead before it starts.
+        # Floored at 1 to match a horizon floored at index 0: a household already
+        # past its stated life expectancy still gets the one year the plan runs
+        # for, rather than being dead before it starts.
         death_index_by_person[name] = max(1, (death - as_of).days // 365 + 1)
 
     return Plan(
@@ -710,16 +751,16 @@ def compile_plan(
         year_variants=year_variants,
         slots_by_variant=slots_by_variant,
         death_index_by_person=death_index_by_person,
-        slot_names=tuple(slot_names),
-        assets=tuple(spendable),
-        opening_balances=tuple(opening),
-        isa_slots=isa_slots,
-        isa_slots_by_person=isa_slots_by_person,
-        dc_slots_by_person=dc_slots,
-        gia_slots_by_person=gia_slots_by_person,
-        investable_slots=investable,
-        cash_slot=slot_of[CASH_RESERVE],
-        ladder_slot=slot_of[LADDER_RESERVE],
-        bond_slot=slot_of[BOND_RESERVE],
+        slot_names=ledger.slot_names,
+        assets=ledger.assets,
+        opening_balances=ledger.opening,
+        isa_slots=ledger.isa_slots,
+        isa_slots_by_person=ledger.isa_slots_by_person,
+        dc_slots_by_person=ledger.dc_slots_by_person,
+        gia_slots_by_person=ledger.gia_slots_by_person,
+        investable_slots=ledger.investable_slots,
+        cash_slot=ledger.slot_of[CASH_RESERVE],
+        ladder_slot=ledger.slot_of[LADDER_RESERVE],
+        bond_slot=ledger.slot_of[BOND_RESERVE],
         series_keys=series_keys,
     )

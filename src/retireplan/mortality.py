@@ -10,24 +10,15 @@ really "£19M conditional on both living to 95", and nothing said so.
 mortality on is a deliberate act whose effect is attributable. `LifeTable`
 samples an age at death per trial from published ONS rates.
 
-## Why the two deaths are sampled independently
-
-Real couples' deaths are somewhat correlated — shared circumstances, shared
-habits, and the well-documented bereavement effect. Modelling that would
-*shorten* the expected gap between the two deaths, and the gap is precisely
-what makes a plan expensive: a survivor alone for fifteen years on one State
-Pension and half a DB pension is the risk this exists to expose. Independence
-is therefore the conservative assumption for the question being asked.
-
-Most of the correlation anyone can actually observe in death *dates* is the
-age gap between the two people, and that is already modelled — it is in their
-dates of birth. A copula on top would be false precision, and this project's
-standing rule is that a claim cheap to assert and never checked is the
-dangerous kind.
-
-What matters far more than correlation is **sex**: a unisex table applied to a
-mixed-sex couple is roughly a three-and-a-half year error on each person,
-against a correlation effect worth a fraction of a year.
+The two deaths are sampled independently, deliberately. Real couples' deaths do
+correlate, but modelling that would *shorten* the expected gap between them —
+and the gap is what makes a plan expensive, since a survivor alone for fifteen
+years on one State Pension and half a DB pension is the risk this exists to
+expose. Most observable correlation in death dates is the couple's age gap,
+already modelled in their dates of birth; a copula on top would be false
+precision. Sex matters far more: a unisex table on a mixed-sex couple is about a
+three-and-a-half year error each way, against a fraction of a year for
+correlation.
 """
 from __future__ import annotations
 
@@ -41,9 +32,9 @@ from typing import Mapping, Protocol, runtime_checkable
 DATA_DIR = Path(__file__).parent / "data" / "mortality"
 DEFAULT_TABLE = "ons_qx_ew_2022_2024.csv"
 
-#: Nobody is modelled past this age. The oldest verified human ages are barely
-#: beyond it, and a life table's top rates are thin enough to be noise.
 ABSOLUTE_MAX_AGE = 110
+"""Nobody is modelled past this: the oldest verified human ages are barely
+beyond it, and a life table's top rates are thin enough to be noise."""
 
 
 @runtime_checkable
@@ -125,9 +116,8 @@ class LifeTable:
         looked_up = max(0, age - self.age_rating)
         if sex in ("male", "female"):
             return self._lookup(sex, looked_up)
-        # Sex unstated: blend the two evenly rather than silently picking one.
-        # A unisex assumption is a real error (a few years each way), so intake
-        # should ask -- but guessing would be worse than averaging.
+        # Sex unstated: blend evenly rather than silently pick one. Worth a few
+        # years each way, so intake should ask — but guessing is worse.
         return 0.5 * self._lookup("male", looked_up) + 0.5 * self._lookup("female", looked_up)
 
     def _lookup(self, sex: str, age: int) -> float:
