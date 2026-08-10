@@ -6,6 +6,7 @@ from is just a slowly emptying pot, not a strategy.
 """
 from __future__ import annotations
 
+import dataclasses
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -63,6 +64,34 @@ class DrawdownContext:
     here, so the two share one real cap regardless of which mode a
     household actually uses."""
 
+    crystallised: dict[str, float] = field(default_factory=dict)
+    """Mutable, whole-plan: how much of each person's DC pension has already
+    moved into drawdown. The pot minus this is uncrystallised.
+
+    The distinction is not bookkeeping. **Only uncrystallised funds carry a
+    further tax-free entitlement**, so a UFPLS may be paid from them alone,
+    and 25% of them is 25% of whatever they have grown to -- which is why
+    delaying crystallisation grows the entitlement in cash terms, and why a
+    small pot can eventually release more than 25% of its value today.
+    """
+
+    def for_dry_run(self) -> "DrawdownContext":
+        """A copy whose mutable ledgers are private to the caller.
+
+        `WithdrawalContext.shortfall_for` probes spending levels by resolving
+        against a *copied* portfolio, but a strategy also consumes Lump Sum
+        Allowance, ISA headroom and crystallisation state as it goes. Sharing
+        those with the real run let a rejected probe permanently spend
+        allowance nobody ever received -- and `VariablePercentage` probes
+        inside a bisection loop, so it spent it many times per year.
+        """
+        return dataclasses.replace(
+            self,
+            isa_headroom_used=dict(self.isa_headroom_used),
+            tax_free_cash_used=dict(self.tax_free_cash_used),
+            crystallised=dict(self.crystallised),
+        )
+
 
 @dataclass
 class DrawResult:
@@ -98,11 +127,16 @@ def _draw_dc_pension(
         return 0.0
     already = taxable_income.get(person, 0.0)
     tax_before = ctx.tax.income_tax(already)
+    crystallised = min(ctx.crystallised.get(person, 0.0), available)
+    uncrystallised = max(0.0, available - crystallised)
 
     if ctx.pension_access is PensionAccess.UFPLS:
+        # Paid from uncrystallised funds only: a UFPLS is a withdrawal that has
+        # never been through a crystallisation event, so anything already in
+        # drawdown is out of reach of this mechanism.
         used = ctx.tax_free_cash_used.get(person, 0.0)
         wanted_gross = ctx.tax.ufpls_gross_for_net(already, used, need)
-        gross = min(wanted_gross, available)
+        gross = min(wanted_gross, uncrystallised)
         if taxable_cap is not None:
             gross = min(gross, ctx.tax.ufpls_gross_for_taxable(used, taxable_cap))
         tax_free, taxable = ctx.tax.ufpls_split(gross, used)
@@ -114,12 +148,50 @@ def _draw_dc_pension(
         if taxable_cap is not None:
             gross = min(gross, taxable_cap)
         tax_free, taxable = 0.0, gross
+        if ctx.pension_access is PensionAccess.PHASED:
+            # Taxable income beyond what is already in drawdown has to bring
+            # more funds through a crystallisation event, and 25% of that
+            # tranche is tax-free whether or not the cash was wanted.
+            if gross > crystallised:
+                tax_free, added = crystallise(
+                    person, gross - crystallised, uncrystallised, ctx
+                )
+                crystallised += added
+                result.ufpls_tax_free += tax_free
+            taxable = min(gross, crystallised)
+            gross = taxable + tax_free
+        ctx.crystallised[person] = max(0.0, crystallised - taxable)
 
     net_gained = tax_free + taxable - (ctx.tax.income_tax(already + taxable) - tax_before)
     portfolio.draw_pro_rata(slots, gross)
     taxable_income[person] = already + taxable
     result.dc_withdrawn_gross += gross
     return net_gained
+
+
+def crystallise(
+    person: str, drawdown_wanted: float, uncrystallised: float, ctx: DrawdownContext,
+) -> tuple[float, float]:
+    """Crystallise enough uncrystallised pension to add `drawdown_wanted` to
+    drawdown. Returns `(tax_free_released, added_to_drawdown)`.
+
+    A tranche `t` releases `min(0.25t, headroom)` tax-free and puts the rest
+    into drawdown, so while relief lasts `t = wanted / 0.75`, and once the
+    Lump Sum Allowance is exhausted the whole tranche is taxable and
+    `t = wanted`. Mutates `ctx.tax_free_cash_used`.
+    """
+    used = ctx.tax_free_cash_used.get(person, 0.0)
+    headroom = max(0.0, ctx.tax.lump_sum_allowance - used)
+    fraction = ctx.tax.pcls_fraction
+    while_relieved = drawdown_wanted / (1.0 - fraction)
+    tranche = (
+        while_relieved if while_relieved * fraction <= headroom
+        else drawdown_wanted + headroom
+    )
+    tranche = min(tranche, uncrystallised)
+    tax_free = min(tranche * fraction, headroom)
+    ctx.tax_free_cash_used[person] = used + tax_free
+    return tax_free, tranche - tax_free
 
 
 def isa_recipients(person: str, isa_slots_by_person: dict[str, tuple[int, ...]]) -> list[str]:

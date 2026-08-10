@@ -390,6 +390,62 @@ off starting valuation rather than portfolio performance alone.
 
 ---
 
+### 1.17 No phased crystallisation, and no crystallisation ledger — **high** — NOW MODELLED
+
+Two linked gaps, found while working out when PCLS beats UFPLS.
+
+**No `PensionAccess.PHASED`.** The modes are all-at-once (`PCLS`), coupled
+25/75 (`UFPLS`), or nothing. Real phased crystallisation — crystallise a
+tranche, take 25% of *that*, leave the rest uncrystallised, keep taxable
+income an independent decision — has no mode. It is not a niche case: on the
+modelled path it is the best route for every pot below about 90% of the pot
+size at which the LSA binds (~£980,000 single, ~£1.93m couple at 2%
+inflation and 4% real growth), which is most households.
+
+**No crystallised-vs-uncrystallised ledger.** The engine tracks only
+entitlement consumed, so 25% is always 25% of *today's* pot. Delay therefore
+cannot grow the entitlement, when in reality it does whenever the pot grows:
+on a £400,000 pot over 30 years, delayed routes release about £143,000 of
+tax-free cash against £100,000 taken today. Every below-cap plan understates
+phased and UFPLS by roughly that gap. The two gaps are linked because
+`PHASED` cannot be implemented correctly without the ledger.
+
+**Which way it cuts.** Both understate the tax-free cash available below the
+cap, so plans for those households are pessimistic on net bequest — and the
+skill's old advice to "model the below-LSA case with `UFPLS`" made it worse,
+because `UFPLS` also forces out taxable income the real strategy avoids.
+Above the cap nothing changes: waiting buys nothing there, and `PCLS` is
+already right.
+
+**Shipped.** `_Accounts.crystallised` and `DrawdownContext.crystallised` track
+each person's drawdown share as a value, scaled with the pot each year in
+`_grow_balances`. `PensionAccess.PHASED` crystallises a tranche a year — sized
+by `Scenario.phased_tranche`, defaulting to remaining ISA room so the cash
+lands somewhere sheltered — and taxable income beyond what is already in
+drawdown crystallises on demand via `strategies.drawdown.crystallise`. A UFPLS
+and a dated `pension_lump_sums` payment can now only draw on uncrystallised
+funds, so the same pound cannot be relieved twice. On a £400,000 pot growing
+4% real, the routes now release £104,000 (PCLS), £113,872 (phased) and
+£155,825 (UFPLS) — the delay effect the engine previously could not express —
+while nothing exceeds the allowance at £3m under any route.
+
+**A related bug, fixed here.** `shortfall_for` resolved probes against a
+*copied* portfolio but the *shared* `DrawdownContext`, so every rejected probe
+permanently consumed Lump Sum Allowance and ISA headroom nobody received —
+and `VariablePercentage` probes inside a bisection loop, so it was spent many
+times a year. One probe burned £8,084 of allowance in isolation.
+`DrawdownContext.for_dry_run` now copies the mutable ledgers. This
+understated UFPLS and inflated tax on every plan combining a percentage
+withdrawal rule with `UFPLS`; those numbers move.
+
+*Still open:* the MPAA (see 1.14) is what makes UFPLS wrong for anyone still
+contributing, and remains unenforced. And **`FiscalDrag.inflation` still
+defaults to 0.0**, so the Lump Sum Allowance erodes only when a caller asks —
+`standard-assumptions` now documents the freeze as the standard assumption,
+which the engine default contradicts. Left alone deliberately: flipping it
+moves every number the engine has ever produced, and 1.3 chose attributability
+over a silent change.
+
 ## 2. Skills and agents
 
 **What works.** Splitting intake / scenarios / simulate / report matches how

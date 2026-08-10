@@ -184,6 +184,13 @@ class Scenario:
     drawdown: DrawdownStrategy = field(default_factory=StandardOrder)
     allocation: AllocationStrategy | None = None
 
+    phased_tranche: float | None = None
+    """Tax-free cash to release per person per year under
+    `PensionAccess.PHASED`. `None` sizes each tranche to that person's
+    remaining ISA subscription room, so the cash lands somewhere sheltered
+    rather than in a GIA paying dividend tax for a decade. Ignored by every
+    other `pension_access` mode."""
+
     pension_access: PensionAccess = PensionAccess.NONE
     """How each pension's tax-free entitlement is realised, once accessible.
 
@@ -192,11 +199,17 @@ class Scenario:
     familiar "25% tax-free" is not the whole 25% for exactly the people who
     assume it is. `PensionAccess.PCLS` takes it all in one event, at access;
     `PensionAccess.UFPLS` realises it gradually, 25% of each withdrawal,
-    until the same allowance is used up. See `uk-pension-tax-strategy` for
-    which one is actually better for a given household -- it depends on
-    whether the 25% entitlement is anywhere near the allowance cap, and on
-    whether the person is still contributing (UFPLS triggers the Money
-    Purchase Annual Allowance immediately; PCLS alone does not).
+    until the same allowance is used up.
+
+    **Neither is the best route for a pot below about 90% of the pot size at
+    which the cap binds.** That case wants phased crystallisation, which has no
+    mode here -- approximate it with dated `pension_lump_sums` tranches rather
+    than substituting `UFPLS`, whose forced taxable slice the real strategy
+    avoids. `UFPLS` is never optimal on the modelled paths: it is dominated by
+    phased below the cap and by `PCLS` above it, and it triggers the Money
+    Purchase Annual Allowance immediately where `PCLS` alone does not. See
+    `uk-pension-tax-strategy` for the thresholds and REVIEW.md 1.17 for why the
+    missing crystallisation ledger understates both delayed routes.
 
     A PCLS's proceeds are invested via `_Accounts.invest_for`: the owner's own
     ISA first (then a spouse's if theirs is full), then the owner's GIA, and

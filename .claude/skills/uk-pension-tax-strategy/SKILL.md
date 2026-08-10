@@ -90,12 +90,28 @@ the rate.
 1. **Fill the personal allowance every year** — it does not carry forward.
 2. **Then fill to the basic-rate ceiling** if the beneficiary comparison favours
    it (£50,270 at 20% against 64% later — usually yes).
-3. **Top up from the ISA** beyond that, rather than paying 40% now.
-4. **Use both people's bands** — two allowances and two basic-rate bands are
+3. **Size the draw to empty the pension over the horizon** — roughly **5% of the
+   pot per person per year** — and go past the basic-rate ceiling to do it. 40%
+   now beats 64% later, so the optimum for a large pot sits well into higher
+   rate: ~£77,500 on a £1.5m pot, £100,000 on £2m+. Stop at the basic-rate
+   ceiling only where the beneficiary is a basic-rate taxpayer.
+4. **£100,000 is a hard ceiling, not a caution.** The taper makes £100,000–
+   £125,140 a 60% band; drawing to £125,140 instead of £100,000 costs a £3m pot
+   about £109,000.
+5. **Use both people's bands** — two allowances and two basic-rate bands are
    worth roughly £25,000 and £100,000 a year of cheap income between them.
    (`TaxEfficientOrder` fills each person's band in turn but does not yet
    optimise across them — see REVIEW.md.)
-5. **Avoid £100,000–£125,140**, where the taper makes the marginal rate 60%.
+6. **Spend the pension, not the shelters.** Under the optimum the pension funds
+   96–100% of spending and the ISA/GIA are a *destination* for the tax-free cash
+   and surplus, not a source. A PCLS that gets spent has been wasted: its value
+   is the wrapper transfer, 40% at death instead of 64%.
+7. **Where a top-up is needed, take it from the GIA before the ISA** — worth up
+   to ~£13,500 over 30 years. Draining the GIA early stops it generating annual
+   dividend tax; the ISA shelters better, so leave it intact. **This reverses the
+   built-in ISA→GIA→pension order** and has to be set deliberately.
+8. **Above roughly £2.5m, income cannot drain the pot** — £100,000 a year still
+   leaves £1.9m+ at death. Gifting is the lever there, not drawdown order.
 
 `strategies.TaxEfficientOrder(fill_to=...)` implements 1–3 and recycles surplus
 into the ISA.
@@ -145,7 +161,9 @@ shares one £20,000-per-person counter (`DrawdownContext.isa_headroom_used`), so
 that is a ceiling, never something two mechanisms can double past. With one ISA
 it reduces to the single-person case automatically.
 
-## PCLS vs UFPLS
+## PCLS, phased crystallisation and UFPLS
+
+Three routes, not two.
 
 **PCLS + flexi-access drawdown.** Crystallise part or all of the pot; take up to
 25% of what you crystallise tax-free, **capped at £268,275** — which binds above
@@ -153,9 +171,20 @@ about £1.07m, exactly the people who assume "25% tax-free" applies to all of it
 Use `tax.pcls_available(pot)`, not `pot * 0.25`. The remaining 75% moves to
 drawdown and stays invested; taxable income is a separate later decision.
 
+**Phased crystallisation.** The same mechanism in tranches: crystallise only
+what is needed, each tranche releasing 25% of itself. What is left stays
+uncrystallised, so its 25% keeps tracking a growing pot.
+
 **UFPLS.** A lump sum straight from the uncrystallised pot, automatically 25%
 tax-free / 75% taxable in the same instant. There is no way to take the tax-free
 part alone.
+
+**Phased weakly dominates UFPLS at every pot size.** It leaves funds
+uncrystallised exactly as UFPLS does, so it captures the same growth in
+entitlement, but it does not force three pounds of taxable income out per pound
+of tax-free cash and it does not trigger the MPAA. UFPLS ties it on small pots
+and loses above. **UFPLS is never the best answer** — say so rather than
+offering it as the below-cap default.
 
 **The MPAA decides it.** PCLS alone does not trigger it. *Any* taxable income
 does, permanently cutting money-purchase contribution room from £60,000 to
@@ -163,20 +192,32 @@ does, permanently cutting money-purchase contribution room from £60,000 to
 triggers it immediately**. For anyone still contributing meaningfully, PCLS +
 drawdown preserves the full Annual Allowance and UFPLS does not.
 
-**Once contributions have stopped, the LSA decides it.** Above it (pot >
-£1,073,100) waiting buys nothing — value above the cap never gets tax-free
-treatment — so take the maximum PCLS now, invest it, and start reducing the
-beneficiary's eventual income tax on that slice. Below it, UFPLS's incremental,
-no-commitment withdrawals fit better.
+**Once contributions have stopped, the LSA decides it**, at roughly **90% of the
+pot size at which the cap binds**:
+
+| Pot per household | Route |
+|---|---|
+| Below ~£980,000 single / ~£1.93m couple | **Phased** |
+| Above it | **Full PCLS at outset** |
 
 **Delaying crystallisation on a pot comfortably below the LSA genuinely grows
 the tax-free entitlement in absolute pounds** — easy to get backwards.
 Crystallising early locks the PCLS to today's smaller value, and growth on the
-75% left behind only ever produces taxable income. This stops mattering once the
-projected 25% would hit the LSA cap. **It is an argument about the owner's own
-spending, not "always delay"**: for a pot more likely inherited than spent it
-conflicts with the decision rule above, since delay avoids nothing on IHT and
-the beneficiary still pays income tax after 75. Run both framings.
+75% left behind only ever produces taxable income. On a modelled £400,000 pot
+over 30 years the delayed routes release £143,000 of tax-free cash against
+£100,000 taken today. That advantage dies as the projected 25% approaches the
+cap; above the cap, waiting buys nothing at all, so take the maximum now and
+start reducing the beneficiary's eventual income tax on that slice.
+
+**The threshold falls in real terms every year**, because the LSA is frozen in
+cash terms and the pot is not — see `standard-assumptions`. Recompute it against
+the household's own projection rather than quoting the figures above, which
+assume 2% inflation and 4% real growth.
+
+**It is an argument about the owner's own spending, not "always delay"**: for a
+pot more likely inherited than spent it conflicts with the decision rule above,
+since delay avoids nothing on IHT and the beneficiary still pays income tax
+after 75. Run both framings.
 
 **Recycling anti-avoidance:** a PCLS cannot be paid back into a pension for
 further relief — the test bites where contributions rise by more than 30% of the
@@ -189,10 +230,25 @@ PCLS across a five-year window. Moving PCLS into an *ISA* is not caught.
 | `NONE` (default) | fully taxable, no lump sum, ever |
 | `PCLS` | crystallises and takes the maximum tax-free lump sum at first access |
 | `UFPLS` | splits every ongoing withdrawal 25/75, solved exactly against the bands |
+| `PHASED` | crystallises a tranche a year, sheltering the tax-free cash; taxable income stays independent |
 
-PCLS and UFPLS share one lifetime tax-free-cash counter, so they compose
-correctly. Model the below-LSA, no-longer-contributing case with `UFPLS` rather
-than leaving `NONE` and hand-approximating.
+All modes share one lifetime tax-free-cash counter, so they compose correctly.
+
+**Size the tranche with `Scenario.phased_tranche`.** `None` sizes it to
+remaining ISA room, which is the sensible default: the cash lands somewhere
+sheltered instead of a GIA paying dividend tax for a decade. Crystallising only
+the minimum each withdrawal needs reduces `PHASED` exactly to `UFPLS` — the gain
+comes from crystallising *ahead* of the taxable need.
+
+**Only uncrystallised funds carry a further entitlement**, which the engine now
+tracks, so delay grows the tax-free cash in cash terms: on a £400,000 pot at 4%
+real, the routes release £104,000 (`PCLS`), £113,872 (`PHASED`) and £155,825
+(`UFPLS`). Quote the engine, not the direction.
+
+**The Lump Sum Allowance erodes only when `FiscalDrag.inflation` is set.** It
+defaults to 0.0, which silently assumes an indexed allowance and so flatters
+every delayed route — set it to the inflation assumption whenever the PCLS
+timing decision is live, or the comparison is rigged toward waiting.
 
 **For a specific one-off — "£50,000 of cash now" — use
 `Scenario.pension_lump_sums`**: a dated `PensionLumpSum(on, person, amount)`,

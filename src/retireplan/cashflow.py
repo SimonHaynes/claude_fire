@@ -237,7 +237,15 @@ class _Accounts:
     tax: TaxSystem
     portfolio: Portfolio
     tax_free_cash_taken: dict[str, float]
+    crystallised: dict[str, float] = field(default_factory=dict)
+    """How much of each person's DC pension is already in drawdown. Only
+    uncrystallised funds carry a further tax-free entitlement, so this decides
+    what a UFPLS may draw on and what a further crystallisation can relieve."""
     isa_headroom_used: dict[str, float] = field(default_factory=dict)
+
+    def uncrystallised(self, person: str) -> float:
+        dc = self.slots.dc_slots_by_person.get(person, ())
+        return max(0.0, self.portfolio.sum_of(dc) - self.crystallised.get(person, 0.0))
 
     def invest_for(self, person: str, amount: float) -> None:
         """Shelter `amount` as `person`'s own money: their ISA first, a spouse's
@@ -357,6 +365,10 @@ def _grow_balances(
     year: PlanYear,
     rng: random.Random | None,
 ) -> None:
+    before = {
+        person: accounts.portfolio.sum_of(dc)
+        for person, dc in accounts.slots.dc_slots_by_person.items()
+    }
     for slot, asset in enumerate(accounts.plan.assets):
         override = (
             allocation.real_return(asset, market, year.index)
@@ -365,6 +377,16 @@ def _grow_balances(
         rate = override if override is not None else asset.returns.real_return(market, rng)
         balance = accounts.portfolio.balances[slot] * (1 + rate - asset.annual_charge_pct)
         accounts.portfolio.balances[slot] = max(0.0, balance - asset.flat_annual_fee)
+
+    # Crystallised funds stay invested, so the drawdown share of a pot has to
+    # move with it — held as a value rather than a fraction because every other
+    # mechanism here adds and removes cash amounts, not proportions.
+    for person, opening in before.items():
+        held = accounts.crystallised.get(person, 0.0)
+        if held <= 0 or opening <= 0:
+            continue
+        closing = accounts.portfolio.sum_of(accounts.slots.dc_slots_by_person[person])
+        accounts.crystallised[person] = min(held * closing / opening, closing)
 
 
 def _settle_maturities(accounts: _Accounts, year: PlanYear) -> None:
@@ -396,7 +418,9 @@ def _take_dated_lump_sums(
         dc = accounts.slots.dc_slots_by_person.get(request.person, ())
         if not dc or not accounts.can_draw_pension(request.person, year):
             continue
-        gross = min(request.amount, accounts.portfolio.sum_of(dc))
+        # A 25/75 payment is a UFPLS, so it can only be met from funds that
+        # have never been crystallised.
+        gross = min(request.amount, accounts.uncrystallised(request.person))
         if gross <= 0:
             continue
         used = accounts.tax_free_cash_taken.get(request.person, 0.0)
@@ -432,8 +456,50 @@ def _take_pcls(accounts: _Accounts, year: PlanYear, already_fired: set[str]) -> 
         accounts.portfolio.draw_pro_rata(dc, lump)
         accounts.invest_for(person, lump)
         accounts.tax_free_cash_taken[person] = used + lump
+        # The whole pot went through the crystallisation event, so what remains
+        # is drawdown: no part of it carries a further tax-free entitlement.
+        accounts.crystallised[person] = accounts.portfolio.sum_of(dc)
         taken += lump
     return taken
+
+
+def _take_phased_tranche(accounts: _Accounts, year: PlanYear, tranche: float | None) -> float:
+    """Crystallise a tranche for each person, sheltering the tax-free cash.
+
+    The point of phasing is to harvest tax-free cash *ahead* of the taxable
+    income it would otherwise be tied to: crystallise, shelter the 25%, and
+    leave the 75% in drawdown to be drawn down over later years. Crystallising
+    only what each withdrawal needs reduces exactly to UFPLS, which is why the
+    tranche is a policy and not a consequence.
+
+    `tranche` is the tax-free cash targeted per person per year; `None` sizes
+    it to their remaining ISA subscription room, so the cash lands somewhere
+    that shelters it rather than in a GIA paying dividend tax for a decade.
+    """
+    released = 0.0
+    for person, dc in accounts.slots.dc_slots_by_person.items():
+        if not dc or not accounts.can_draw_pension(person, year):
+            continue
+        want = tranche if tranche is not None else max(
+            0.0,
+            accounts.tax.isa_annual_allowance
+            - accounts.isa_headroom_used.get(person, 0.0),
+        )
+        if want <= 0:
+            continue
+        used = accounts.tax_free_cash_taken.get(person, 0.0)
+        headroom = max(0.0, accounts.tax.lump_sum_allowance - used)
+        fraction = accounts.tax.pcls_fraction
+        size = min(want / fraction, accounts.uncrystallised(person))
+        tax_free = min(size * fraction, headroom)
+        if tax_free <= 0:
+            continue
+        accounts.portfolio.draw_pro_rata(dc, tax_free)
+        accounts.invest_for(person, tax_free)
+        accounts.tax_free_cash_taken[person] = used + tax_free
+        accounts.crystallised[person] = accounts.crystallised.get(person, 0.0) + size - tax_free
+        released += tax_free
+    return released
 
 
 def _buy_income_annuity(
@@ -505,6 +571,7 @@ def project(
 
     portfolio = Portfolio(list(plan.opening_balances))
     tax_free_cash_taken: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
+    crystallised: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
     pcls_fired: set[str] = set()
     annuities_bought: dict[str, dict] = {}
     results: list[YearResult] = []
@@ -524,6 +591,7 @@ def project(
             tax=year.tax,
             portfolio=portfolio,
             tax_free_cash_taken=tax_free_cash_taken,
+            crystallised=crystallised,
         )
         tax = year.tax
         market = _returns_for(plan, path, year.index)
@@ -539,10 +607,12 @@ def project(
         year, lump_sum_this_year = _take_dated_lump_sums(
             accounts, scenario.pension_lump_sums, year
         )
-        pcls_this_year = (
-            _take_pcls(accounts, year, pcls_fired)
-            if scenario.pension_access is PensionAccess.PCLS else 0.0
-        )
+        if scenario.pension_access is PensionAccess.PCLS:
+            pcls_this_year = _take_pcls(accounts, year, pcls_fired)
+        elif scenario.pension_access is PensionAccess.PHASED:
+            pcls_this_year = _take_phased_tranche(accounts, year, scenario.phased_tranche)
+        else:
+            pcls_this_year = 0.0
 
         income_annuity = scenario.income_annuity
         annuity_premium_this_year = 0.0
@@ -591,6 +661,7 @@ def project(
             isa_headroom_used=accounts.isa_headroom_used,
             pension_access=scenario.pension_access,
             tax_free_cash_used=tax_free_cash_taken,
+            crystallised=crystallised,
         )
 
         def shortfall_for(discretionary: float) -> float:
@@ -598,7 +669,12 @@ def project(
             need = year.fixed_spend + discretionary - net_income
             if need <= 0:
                 return 0.0
-            return scenario.drawdown.resolve(need, portfolio.copy(), dict(taxable), draw_ctx).unmet
+            # `for_dry_run` matters as much as the portfolio copy: a probe also
+            # consumes Lump Sum Allowance, ISA headroom and crystallisation
+            # state, and `VariablePercentage` probes inside a bisection loop.
+            return scenario.drawdown.resolve(
+                need, portfolio.copy(), dict(taxable), draw_ctx.for_dry_run()
+            ).unmet
 
         if scenario.withdrawal is None:
             discretionary = year.nominal_discretionary

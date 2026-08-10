@@ -27,7 +27,9 @@ from retireplan import (
     compile_plan,
     project,
 )
+from retireplan.strategies.drawdown import DrawdownContext
 from retireplan.strategies.withdrawal import WithdrawalContext
+from retireplan.portfolio import Portfolio
 from retireplan.tax.uk import UK
 
 AS_OF = date(2026, 1, 1)
@@ -461,3 +463,92 @@ class TestPercentageRules:
     def test_percentage_rules_never_exceed_what_is_affordable(self):
         for rule in (PercentOfPortfolio(), VariablePercentage()):
             assert rule.decide(ctx(affordable_up_to=0)) <= 20_000.0
+
+
+def growing_household(pension, growth=0.04, spend=30_000.0, isa=50_000.0):
+    return Household(
+        people=[Person("Alex", date(1960, 1, 1))],
+        expenses=[Expense("Living", spend, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+        assets=[
+            Asset("Pension", AssetType.DC_PENSION, "Alex", pension, returns=FixedReal(growth)),
+            Asset("ISA", AssetType.ISA, "Alex", isa, returns=FixedReal(growth)),
+        ],
+        assumptions=Assumptions(life_expectancy_age=92, state_pension_age=99),
+    )
+
+
+def tax_free_released(household, access, **kwargs):
+    projection = run(household, Scenario(
+        "s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
+        pension_access=access, **kwargs,
+    ))
+    return sum(y.pcls_taken + y.ufpls_tax_free_taken for y in projection.years)
+
+
+class TestCrystallisation:
+    """Only uncrystallised funds carry a further tax-free entitlement, so
+    delaying crystallisation grows that entitlement whenever the pot grows."""
+
+    def test_delay_releases_more_than_25_percent_of_todays_pot(self):
+        small = growing_household(400_000.0)
+        at_once = tax_free_released(small, PensionAccess.PCLS)
+        phased = tax_free_released(small, PensionAccess.PHASED)
+        ufpls = tax_free_released(small, PensionAccess.UFPLS)
+        assert at_once == pytest.approx(400_000 * 0.25 * 1.04)   # 25% of the pot, once
+        assert phased > at_once
+        assert ufpls > phased
+        assert ufpls > 400_000 * 0.25
+
+    def test_delay_buys_nothing_once_the_allowance_binds(self):
+        big = growing_household(2_000_000.0)
+        assert tax_free_released(big, PensionAccess.PCLS) == pytest.approx(UK.lump_sum_allowance)
+        assert tax_free_released(big, PensionAccess.PHASED) == pytest.approx(UK.lump_sum_allowance)
+
+    def test_no_route_ever_exceeds_the_lump_sum_allowance(self):
+        for access in PensionAccess:
+            released = tax_free_released(growing_household(3_000_000.0), access)
+            assert released <= UK.lump_sum_allowance + 1e-6
+
+    def test_a_bigger_tranche_front_loads_the_tax_free_cash(self):
+        household = growing_household(600_000.0)
+        early = run(household, Scenario(
+            "s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
+            pension_access=PensionAccess.PHASED, phased_tranche=100_000.0,
+        ))
+        drip = run(household, Scenario(
+            "s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
+            pension_access=PensionAccess.PHASED, phased_tranche=5_000.0,
+        ))
+        assert early.years[0].pcls_taken > drip.years[0].pcls_taken
+
+    def test_a_dated_lump_sum_cannot_draw_on_crystallised_funds(self):
+        """A 25/75 payment is a UFPLS, so funds already in drawdown are out of
+        its reach — otherwise the same pound relieves twice."""
+        household = growing_household(500_000.0)
+        released = tax_free_released(
+            household, PensionAccess.PHASED,
+            pension_lump_sums=(PensionLumpSum(date(2030, 6, 1), "Alex", 200_000.0),),
+        )
+        assert released <= UK.lump_sum_allowance + 1e-6
+        assert released <= 500_000 * 0.25 * 1.04 ** 30
+
+
+class TestDryRunIsolation:
+    def test_a_probe_does_not_consume_the_lump_sum_allowance(self):
+        """`shortfall_for` resolves against a copied portfolio, but a strategy
+        also spends allowance as it goes — and `VariablePercentage` probes
+        inside a bisection loop, so a shared ledger was spent many times a year."""
+        ctx = DrawdownContext(
+            tax=UK, isa_slots=(), isa_slots_by_person={"a": ()},
+            dc_slots_by_person={"a": (0,)}, gia_slots_by_person={"a": ()},
+            cash_slot=1, ladder_slot=None, bond_slot=None,
+            dc_accessible_by_person={"a": True}, is_retired=True, essential_spend=0.0,
+            growth_return=0.0, bond_return=0.0, isa_headroom_used={},
+            pension_access=PensionAccess.UFPLS,
+            tax_free_cash_used={"a": 0.0}, crystallised={"a": 0.0},
+        )
+        TaxEfficientOrder().resolve(
+            30_000.0, Portfolio([500_000.0, 0.0]), {"a": 0.0}, ctx.for_dry_run()
+        )
+        assert ctx.tax_free_cash_used["a"] == 0.0
+        assert ctx.isa_headroom_used == {}

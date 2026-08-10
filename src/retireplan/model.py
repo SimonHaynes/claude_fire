@@ -80,6 +80,18 @@ class PensionAccess(str, Enum):
     Allowance is used up, after which further withdrawals are fully
     taxable. See `uk-pension-tax-strategy` for when this beats PCLS."""
 
+    PHASED = "phased"
+    """Crystallise in tranches: each releases 25% of *itself* tax-free and
+    moves the other 75% into drawdown, where taxable income stays a separate
+    decision. What is left uncrystallised keeps its own 25% entitlement,
+    which therefore grows with the pot -- the reason this beats `PCLS` for a
+    pot below roughly 90% of the size at which the Lump Sum Allowance binds.
+
+    Size the tranches with `Scenario.phased_tranche`. Crystallising only the
+    minimum each withdrawal needs reduces exactly to `UFPLS`; the gain comes
+    from crystallising *ahead* of the taxable need, sheltering the tax-free
+    cash, and drawing the 75% down over later years."""
+
 
 @dataclass
 class Person:
