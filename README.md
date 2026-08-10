@@ -99,8 +99,10 @@ is purchasing power, not future pounds.
 
 ## Install
 
-Once, on a new machine. Needs **Python 3.10 or newer** and **Node 18+** (for
-Claude Code).
+Needs **Node 18+** (for Claude Code) and **Python 3.10 or newer**.
+
+There are three things only you can do. Everything after them is ordinary
+setup that Claude Code will do for you, and will redo if it ever breaks.
 
 **1. Install Claude Code.** It is the interface to all of this, not an optional
 extra — see [Requires Claude Code](#requires-claude-code) above.
@@ -109,58 +111,62 @@ extra — see [Requires Claude Code](#requires-claude-code) above.
 npm install -g @anthropic-ai/claude-code
 ```
 
-**2. Clone the repo and go into it.** Every command below, and every command
-in the rest of this README, is run from the repo root.
+**2. Clone the repo and go into it.** Everything happens from the repo root:
+the agents and skills live in `.claude/` here, and Claude Code will not find
+them from anywhere else.
 
 ```bash
 git clone https://github.com/SimonHaynes/claude_fire.git
 cd claude_fire
 ```
 
-**3. Get a free FRED API key** from
-[fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys)
-— instant, no approval wait — and put it in `.env`:
+**3. Get a free FRED API key** —
+[fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys),
+instant, no approval wait. You have to do this one yourself; nothing can sign
+up on your behalf.
+
+**4. Run `claude` and ask it to finish the setup.**
 
 ```bash
-cp .env.example .env       # then edit it: FRED_API_KEY=your_key_here
+claude
 ```
 
-`.env` is gitignored. The key is only used to pull US CPI and the NBER
-recession series when building the market data in step 5.
+> set this repo up: create the venv, install the package, and build the market
+> and mortality data. My FRED key is <paste it here>
 
-**4. Create the virtualenv and install the package.**
+It creates `.env`, builds the virtualenv, installs `.[report,dev]`, fetches the
+data and runs the tests — and if a step fails, it can read the error and fix
+it, which is the reason to hand it the job rather than work through the
+commands below.
+
+<details>
+<summary>Doing it by hand instead</summary>
 
 ```bash
-python -m venv .venv
+cp .env.example .env                                  # add FRED_API_KEY=...
+python -m venv .venv                                  # .venv\Scripts\ on native Windows
 .venv/bin/pip install -e ".[report,dev]"
-```
-
-The engine itself is dependency-free; `report` adds jinja2, weasyprint and
-pymupdf for building and proofreading the PDF, `dev` adds pytest. On Windows
-without WSL, the path is `.venv\Scripts\` rather than `.venv/bin/`.
-
-**5. Build the market and mortality data.** It is **not checked into this
-repo** — the sources' redistribution terms are unclear, so you rebuild it
-locally instead (see [Data](#data), and `DATA_SETUP.md` for the detail). This
-takes a minute or two and is needed before any simulation will run.
-
-```bash
 .venv/bin/python tools/fetch_market_data.py
 .venv/bin/python tools/build_mortality_csv.py --fetch
+.venv/bin/python -m pytest                            # ~500 tests, a few seconds
 ```
 
-**6. Check it worked.**
+`report` adds jinja2, weasyprint and pymupdf — for building the PDF and for
+rendering it back to images to proofread. `dev` adds pytest. The engine itself
+is dependency-free.
 
-```bash
-.venv/bin/python -m pytest
-```
+</details>
 
-500-odd tests, a few seconds. If they pass, the engine and its data are sound
-and you are ready to build a plan.
-
-> Steps 3–6 are ordinary setup, so you can also just do step 1, step 2, run
-> `claude` in the repo root and ask it to finish the install — it will need
-> you to paste in the FRED key at step 3, but can do the rest.
+**Why the key is needed.** The market and mortality data is **not checked into
+this repo** — the sources' redistribution terms are unclear, so you rebuild it
+locally (see [Data](#data) and `DATA_SETUP.md`). FRED supplies the US CPI used
+to deflate every series to real terms, and the NBER recession series that
+drives the corporate credit model. Without it, `fetch_market_data.py` stops and
+no simulation will run: the default `global_equity` and `gov_bonds` series come
+from those files. The only keyless dataset is the GDP-weighted global panel,
+which is a deliberate opt-in for a specific question rather than a substitute
+(`tools/fetch_global_market_data.py`, and `standard-assumptions` on when it is
+the right call).
 
 ## Running a plan
 
@@ -210,16 +216,7 @@ Include the goals and the constraints, not just the balances. "As early as
 possible, notice period is three months" and "we'd cut back if we had to" are
 what turn one answer into a set of alternatives worth comparing.
 
-**2. Run `claude` in the repo root and ask for a plan.** It has to be this
-directory — the agents and skills it needs live in `.claude/` here, and it
-will not find them from anywhere else.
-
-```bash
-cd /path/to/claude_fire
-claude
-```
-
-Then, at the prompt:
+**2. Run `claude` from the repo root and ask for a plan.**
 
 > run a FIRE plan on the information in workspace/smith.txt
 
