@@ -22,7 +22,7 @@ transcription error in the middle of it is invisible and permanent, and would
 quietly move every bequest figure the engine produces. Anyone doubting a
 number here can re-run this against the published workbook and diff.
 
-Reads `.xlsx` with `zipfile` + `xml.etree` — an xlsx is a zip of XML — so the
+Reads `.xlsx` via `_xlsx.py` — an xlsx is a zip of XML — so the
 package keeps its promise of having no runtime dependencies and this script
 adds no build ones either.
 
@@ -35,11 +35,11 @@ import re
 import sys
 import tempfile
 import urllib.request
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+from _xlsx import read_rows, sheet_names, sheet_path
+
 DATASET_PAGE = (
     "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages"
     "/lifeexpectancies/datasets/nationallifetablesenglandandwalesreferencetables"
@@ -77,9 +77,6 @@ def fetch_current_workbook() -> Path:
     return tmp
 
 
-def sheet_names(z: zipfile.ZipFile) -> list[str]:
-    workbook = z.read("xl/workbook.xml").decode("utf-8", "replace")
-    return re.findall(r'<sheet[^>]*name="([^"]+)"', workbook)
 
 
 def latest_period(names: list[str]) -> str:
@@ -90,48 +87,8 @@ def latest_period(names: list[str]) -> str:
     return max(periods, key=lambda p: int(p[:4]))
 
 
-def sheet_path(z: zipfile.ZipFile, sheet_name: str) -> str:
-    workbook = z.read("xl/workbook.xml").decode("utf-8", "replace")
-    rid = None
-    for match in re.finditer(r'<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"', workbook):
-        if match.group(1) == sheet_name:
-            rid = match.group(2)
-    if rid is None:
-        raise SystemExit(f"no sheet named {sheet_name!r} in the workbook")
-    rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
-    targets = dict(re.findall(r'Id="([^"]+)"[^>]*Target="([^"]+)"', rels))
-    return "xl/" + targets[rid].lstrip("/").replace("xl/", "")
 
 
-def read_rows(z: zipfile.ZipFile, path: str) -> list[list[str]]:
-    shared: list[str] = []
-    if "xl/sharedStrings.xml" in z.namelist():
-        root = ET.fromstring(z.read("xl/sharedStrings.xml"))
-        for si in root.findall(f"{NS}si"):
-            shared.append("".join(t.text or "" for t in si.iter(f"{NS}t")))
-
-    def value(cell) -> str:
-        v = cell.find(f"{NS}v")
-        if v is None or v.text is None:
-            return ""
-        return shared[int(v.text)] if cell.get("t") == "s" else v.text
-
-    rows = []
-    for row in ET.fromstring(z.read(path)).iter(f"{NS}row"):
-        # Cell references carry the column letter, so a sparse row must be
-        # placed rather than appended -- a blank cell is simply absent from
-        # the XML, and ignoring that would shift every column after it.
-        cells: dict[int, str] = {}
-        for cell in row.findall(f"{NS}c"):
-            ref = cell.get("r") or ""
-            letters = "".join(c for c in ref if c.isalpha())
-            index = 0
-            for ch in letters:
-                index = index * 26 + (ord(ch) - ord("A") + 1)
-            cells[index - 1] = value(cell)
-        width = max(cells) + 1 if cells else 0
-        rows.append([cells.get(i, "") for i in range(width)])
-    return rows
 
 
 def extract(rows: list[list[str]]) -> dict[tuple[str, int], float]:

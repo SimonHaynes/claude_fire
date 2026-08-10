@@ -12,18 +12,26 @@ These files are not committed to the repo (see `.gitignore` and
 are unclear, so every clone rebuilds its own copy from the original sources.
 This script automates that rebuild; nothing here is transcribed by hand.
 
-Needs a free FRED API key (https://fredaccount.stlouisfed.org/apikeys) in the
-environment as FRED_API_KEY, or in a `.env` file at the repo root (copy
-`.env.example`). No key is needed for the Damodaran or Yahoo Finance sources.
+A FRED API key is OPTIONAL, and buys exactly one file: `us_recession_*.csv`.
+Set it as FRED_API_KEY in the environment or a `.env` file at the repo root
+(copy `.env.example`). Without it this script builds everything else and skips
+that one, which costs you `retireplan.market.HeldToMaturityCredit` -- the
+corporate-credit model keys default incidence off the recession series -- and
+nothing else. A plan with no corporate bond holdings does not notice.
 
 Sources, matching the provenance each written CSV documents in its own
 header:
   * NYU Stern (Damodaran) "Annual Returns on Stock, T.Bonds and T.Bills" --
-    nominal S&P 500 and 10-year US Treasury total returns.
-  * FRED CPIAUCNS -- US CPI (not seasonally adjusted), used both to deflate
-    the above into real returns and as the `inflation` column.
+    nominal annual total returns for the S&P 500, US small cap, 3-month
+    T.Bill, 10-year T.Bond, Baa corporate bonds, real estate and gold.
+  * NYU Stern (Damodaran) histretSP.xlsx, "Inflation Rate" sheet -- US CPI
+    (CPIAUCNS), used both to deflate the above into real returns and as the
+    `inflation` column. This is Damodaran's own FRED export of the same series
+    the recession file uses, so it needs no key, and taking the deflator from
+    the same workbook as the returns means our real figures reconcile with his
+    published ones.
   * FRED USREC -- NBER-based recession indicator, aggregated to a fractional
-    per-year figure.
+    per-year figure. The only thing here that needs a key.
   * Yahoo Finance chart API -- IGSB (iShares 1-5 Year Investment Grade
     Corporate Bond ETF) monthly adjusted close, reduced to December-to-
     December nominal total returns and deflated by the same CPI series.
@@ -41,10 +49,14 @@ import json
 import os
 import re
 import sys
+import tempfile
+import zipfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from _xlsx import read_rows, sheet_path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "src" / "retireplan" / "data"
 USER_AGENT = "Mozilla/5.0 (compatible; retireplan-data-fetch/1.0)"
@@ -80,26 +92,39 @@ def _fred_observations(series_id: str, api_key: str, start: str) -> list[dict]:
     return data["observations"]
 
 
-def fetch_damodaran_nominal() -> dict[int, tuple[float, float]]:
-    """Returns {year: (sp500_nominal, tbond10_nominal)}, as decimals."""
+#: Damodaran's table columns, in page order after the year. The series names
+#: are ours; `global_equity` and `gov_bonds` keep the names they have always
+#: had, misleading as `global_` is for a US proxy -- renaming them would break
+#: every household file in every workspace for no gain.
+DAMODARAN_COLUMNS = (
+    "global_equity",    # S&P 500 total return, dividends included
+    "small_cap",        # US small cap, bottom decile
+    "tbills",           # 3-month T.Bill
+    "gov_bonds",        # 10-year US Treasury total return
+    "baa_corporate",    # Moody's Baa corporate bonds
+    "real_estate",      # US residential real estate
+    "gold",
+)
+
+
+def fetch_damodaran_nominal() -> dict[int, dict[str, float]]:
+    """Returns {year: {series: nominal_return}} for every column of the table."""
     url = "https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html"
     html = _get(url).decode("utf-8", "replace")
-    rows = re.findall(r"<tr.*?>(.*?)</tr>", html, re.S)
-    out: dict[int, tuple[float, float]] = {}
-    for row in rows:
-        cells = re.findall(r"<td.*?>(.*?)</td>", row, re.S)
-        cells = [re.sub(r"<.*?>", "", c).strip() for c in cells]
-        if len(cells) < 5:
-            continue
-        year_text, sp500_text, _small_cap, _tbill, tbond_text = cells[:5]
-        if not re.fullmatch(r"\d{4}", year_text):
+    out: dict[int, dict[str, float]] = {}
+    for row in re.findall(r"<tr.*?>(.*?)</tr>", html, re.S):
+        cells = [re.sub(r"<.*?>", "", c).replace("\xa0", " ").strip()
+                 for c in re.findall(r"<td.*?>(.*?)</td>", row, re.S)]
+        wanted = len(DAMODARAN_COLUMNS)
+        if len(cells) < wanted + 1 or not re.fullmatch(r"\d{4}", cells[0]):
             continue
         try:
-            sp500 = float(sp500_text.rstrip("%")) / 100
-            tbond = float(tbond_text.rstrip("%")) / 100
+            values = [float(c.rstrip("%").replace(",", "")) / 100
+                      for c in cells[1:wanted + 1]]
         except ValueError:
+            # A row of "Value of $100 invested" cells, not returns.
             continue
-        out[int(year_text)] = (sp500, tbond)
+        out[int(cells[0])] = dict(zip(DAMODARAN_COLUMNS, values))
     if len(out) < 50:
         raise SystemExit(
             f"only parsed {len(out)} years from Damodaran's page -- its table "
@@ -108,28 +133,38 @@ def fetch_damodaran_nominal() -> dict[int, tuple[float, float]]:
     return out
 
 
-def fetch_cpi_inflation(api_key: str) -> dict[int, float]:
-    """Mean of the twelve monthly year-over-year CPIAUCNS rates, per calendar year."""
-    observations = _fred_observations("CPIAUCNS", api_key, "1912-01-01")
-    monthly: dict[tuple[int, int], float] = {}
-    for obs in observations:
-        if obs["value"] == ".":
-            continue
-        year, month, _day = obs["date"].split("-")
-        monthly[(int(year), int(month))] = float(obs["value"])
+def fetch_damodaran_inflation() -> dict[int, float]:
+    """US CPI inflation by year, from the workbook behind Damodaran's page.
 
-    years = sorted({y for y, _m in monthly})
+    His "Inflation Rate" sheet is a FRED export of CPIAUCNS taken at the end
+    of each year, so this is a December-to-December rate -- which is the same
+    window his annual total returns are measured over, and therefore the right
+    thing to deflate them by. Needs no API key, which is the point: it is the
+    only reason a FRED key is optional at all.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
+        fh.write(_get("https://pages.stern.nyu.edu/~adamodar/pc/datasets/histretSP.xlsx"))
+        path = Path(fh.name)
+    try:
+        with zipfile.ZipFile(path) as z:
+            rows = read_rows(z, sheet_path(z, "Inflation Rate"))
+    finally:
+        path.unlink(missing_ok=True)
+
     out: dict[int, float] = {}
-    for year in years:
-        rates = []
-        for month in range(1, 13):
-            cur = monthly.get((year, month))
-            prev = monthly.get((year - 1, month))
-            if cur is not None and prev is not None:
-                rates.append(cur / prev - 1)
-        if len(rates) == 12:
-            out[year] = sum(rates) / 12
+    for row in rows:
+        if len(row) >= 3 and row[0].strip().isdigit() and row[2].strip():
+            try:
+                out[int(row[0])] = float(row[2])
+            except ValueError:
+                continue
+    if len(out) < 50:
+        raise SystemExit(
+            f"only parsed {len(out)} years from the Inflation Rate sheet -- "
+            "the workbook may have changed shape; inspect histretSP.xlsx by hand"
+        )
     return out
+
 
 
 def fetch_recession_fraction(api_key: str) -> dict[int, float]:
@@ -188,76 +223,12 @@ def write_csv(path: Path, header: str, columns: list[str], rows: dict[int, tuple
     print(f"wrote {path} -- {len(rows)} years")
 
 
-def main() -> None:
-    repo_root = Path(__file__).resolve().parent.parent
-    _load_dotenv(repo_root)
-    api_key = os.environ.get("FRED_API_KEY", "").strip()
-    if not api_key:
-        raise SystemExit(
-            "FRED_API_KEY is not set. Copy .env.example to .env and add a free "
-            "key from https://fredaccount.stlouisfed.org/apikeys"
-        )
-
-    today = datetime.date.today()
-
-    print("fetching Damodaran nominal equity/bond returns...")
-    nominal_eq_bond = fetch_damodaran_nominal()
-
-    print("fetching CPI from FRED...")
-    inflation = fetch_cpi_inflation(api_key)
-
-    print("fetching NBER recession indicator from FRED...")
-    recession = fetch_recession_fraction(api_key)
-
-    print("fetching IGSB adjusted close from Yahoo Finance...")
-    igsb_nominal = fetch_igsb_nominal()
-
-    long_years = sorted(set(nominal_eq_bond) & set(inflation))
-    if not long_years:
-        raise SystemExit("no overlapping years between Damodaran and CPI data")
-    long_rows = {
-        year: (
-            round(real_return(nominal_eq_bond[year][0], inflation[year]), 5),
-            round(real_return(nominal_eq_bond[year][1], inflation[year]), 5),
-            round(inflation[year], 3),
-        )
-        for year in long_years
-    }
-    first_year, last_year = long_years[0], long_years[-1]
-
+def write_recession(data_dir: Path, today: datetime.date, recession: dict[int, float]) -> None:
+    """The only file that needs a FRED key, so the only one written conditionally."""
+    years = sorted(recession)
     write_csv(
-        DATA_DIR / f"us_long_{first_year}_{last_year}.csv",
-        f"""# Long-run US real (inflation-adjusted) annual returns, {first_year}-{last_year}.
-#
-# Fetched {today.isoformat()} by tools/fetch_market_data.py. Sources:
-#   global_equity, gov_bonds (nominal, before deflation):
-#     NYU Stern (Damodaran), "Annual Returns on Stock, T.Bonds and T.Bills" --
-#     S&P 500 total return (incl. dividends) and 10-year US Treasury total return.
-#     https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html
-#   inflation:
-#     FRED CPIAUCNS (US CPI, not seasonally adjusted), mean of the twelve
-#     monthly year-over-year rates in each calendar year.
-#
-# real_return = (1 + nominal_return) / (1 + inflation) - 1
-#
-# KNOWN SIMPLIFICATION: a US-market proxy, not a global or GBP-denominated
-# series. A UK investor in a global tracker also carries multi-decade currency
-# effects this does not model. Used because it is the longest reliable series
-# obtainable byte-exactly, and tail behaviour matters more to a block
-# bootstrap than the US/global distinction. Replace with a verified
-# global/GBP series when one is available.
-#
-# Columns are real annual returns as decimals (0.07 = 7%), except `inflation`,
-# which is the inflation rate itself (needed to convert fixed *nominal* yields
-# into real terms -- see retireplan.market.FixedNominal).
-""",
-        ["year", "global_equity", "gov_bonds", "inflation"],
-        long_rows,
-    )
-
-    write_csv(
-        DATA_DIR / f"us_recession_{sorted(recession)[0]}_{sorted(recession)[-1]}.csv",
-        f"""# US recession intensity by year, {sorted(recession)[0]}-{sorted(recession)[-1]}.
+        data_dir / f"us_recession_{years[0]}_{years[-1]}.csv",
+        f"""# US recession intensity by year, {years[0]}-{years[-1]}.
 #
 # Fetched {today.isoformat()} by tools/fetch_market_data.py from FRED USREC
 # (NBER-based Recession Indicators for the United States), aggregated here
@@ -279,6 +250,97 @@ def main() -> None:
         ["year", "recession"],
         {year: (round(value, 4),) for year, value in recession.items()},
     )
+
+
+def main() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    _load_dotenv(repo_root)
+    api_key = os.environ.get("FRED_API_KEY", "").strip()
+
+    today = datetime.date.today()
+
+    print("fetching Damodaran nominal returns (7 asset classes)...")
+    nominal = fetch_damodaran_nominal()
+
+    print("fetching CPI from Damodaran's Inflation Rate sheet...")
+    inflation = fetch_damodaran_inflation()
+
+    recession: dict[int, float] = {}
+    if api_key:
+        print("fetching NBER recession indicator from FRED...")
+        recession = fetch_recession_fraction(api_key)
+    else:
+        print(
+            "FRED_API_KEY is not set -- skipping us_recession_*.csv.\n"
+            "  Everything else still builds. What you lose is the corporate credit\n"
+            "  model (retireplan.market.HeldToMaturityCredit), which keys default\n"
+            "  incidence off the recession series; a plan holding no corporate\n"
+            "  bonds is unaffected. Free key: "
+            "https://fredaccount.stlouisfed.org/apikeys",
+            file=sys.stderr,
+        )
+
+    print("fetching IGSB adjusted close from Yahoo Finance...")
+    igsb_nominal = fetch_igsb_nominal()
+
+    long_years = sorted(set(nominal) & set(inflation))
+    if not long_years:
+        raise SystemExit("no overlapping years between Damodaran's returns and CPI data")
+    # `inflation` sits second so the three long-standing columns stay leftmost;
+    # everything after them is new and ordered as Damodaran's page presents it.
+    long_columns = ["global_equity", "gov_bonds", "inflation"] + [
+        c for c in DAMODARAN_COLUMNS if c not in ("global_equity", "gov_bonds")
+    ]
+    long_rows = {
+        year: tuple(
+            round(inflation[year], 5) if column == "inflation"
+            else round(real_return(nominal[year][column], inflation[year]), 5)
+            for column in long_columns
+        )
+        for year in long_years
+    }
+    first_year, last_year = long_years[0], long_years[-1]
+
+    write_csv(
+        DATA_DIR / f"us_long_{first_year}_{last_year}.csv",
+        f"""# Long-run US real (inflation-adjusted) annual returns, {first_year}-{last_year}.
+#
+# Fetched {today.isoformat()} by tools/fetch_market_data.py. Sources:
+#   all return columns (nominal, before deflation):
+#     NYU Stern (Damodaran), "Annual Returns on Stock, T.Bonds and T.Bills" --
+#     https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/histretSP.html
+#       global_equity  S&P 500 total return, dividends included
+#       gov_bonds      10-year US Treasury total return
+#       small_cap      US small cap, bottom decile
+#       tbills         3-month T.Bill
+#       baa_corporate  Moody's Baa-rated corporate bonds
+#       real_estate    US residential real estate
+#       gold
+#   inflation:
+#     Damodaran's own histretSP.xlsx, "Inflation Rate" sheet -- a FRED export
+#     of CPIAUCNS read at each year end, so a December-to-December rate. That
+#     matches the window the returns above are measured over, and needs no API
+#     key, which is why a FRED key is optional for this repo.
+#
+# real_return = (1 + nominal_return) / (1 + inflation) - 1
+#
+# KNOWN SIMPLIFICATION: a US-market proxy, not a global or GBP-denominated
+# series. A UK investor in a global tracker also carries multi-decade currency
+# effects this does not model. Used because it is the longest reliable series
+# obtainable byte-exactly, and tail behaviour matters more to a block
+# bootstrap than the US/global distinction. Replace with a verified
+# global/GBP series when one is available.
+#
+# Columns are real annual returns as decimals (0.07 = 7%), except `inflation`,
+# which is the inflation rate itself (needed to convert fixed *nominal* yields
+# into real terms -- see retireplan.market.FixedNominal).
+""",
+        ["year"] + long_columns,
+        long_rows,
+    )
+
+    if recession:
+        write_recession(DATA_DIR, today, recession)
 
     short_years = sorted(set(igsb_nominal) & set(inflation))
     short_rows = {

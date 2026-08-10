@@ -104,11 +104,40 @@ class TestMarketData:
         to five decimal places. What must hold is the shape of the crash --
         get the sign or the rough magnitude wrong and something upstream has
         actually broken.
+
+        These figures moved once, deliberately, when the deflator changed from
+        a mean of twelve monthly year-over-year CPI rates to Damodaran's own
+        December-to-December series (which is what made a FRED key optional).
+        2008 is the year that shows it: CPI rose 3.8% on an annual-average
+        basis but only 0.09% December to December, so the same -36.55% nominal
+        return deflates to -36.6% rather than -38.9%. The long-run annualised
+        figures are unmoved -- 6.699% against 6.701% real on equities across
+        1928-2024 -- because the change moves inflation between adjacent years
+        rather than changing how much of it there was.
         """
         data = MarketData.load()
-        assert data.by_year[2008]["global_equity"] == pytest.approx(-0.39, abs=0.01)
-        assert data.by_year[1974]["global_equity"] == pytest.approx(-0.33, abs=0.01)
-        assert data.by_year[2022]["short_corporate"] == pytest.approx(-0.126, abs=0.005)
+        assert data.by_year[2008]["global_equity"] == pytest.approx(-0.366, abs=0.01)
+        assert data.by_year[1974]["global_equity"] == pytest.approx(-0.340, abs=0.01)
+        assert data.by_year[1931]["global_equity"] == pytest.approx(-0.381, abs=0.01)
+        assert data.by_year[2022]["short_corporate"] == pytest.approx(-0.114, abs=0.005)
+
+    def test_the_extra_damodaran_columns_are_present_and_span_the_window(self):
+        """Small cap, T.Bills, Baa credit, real estate and gold come from the
+        same table as the equity and bond series, so they must cover the same
+        years -- a short window here would silently narrow the bootstrap for
+        any plan holding one of them."""
+        data = MarketData.load()
+        equities = data.window(["global_equity"])
+        for series in ("small_cap", "tbills", "baa_corporate", "real_estate", "gold"):
+            assert data.window([series]) == equities, series
+
+    def test_the_extra_columns_have_plausible_landmark_values(self):
+        data = MarketData.load()
+        # Small caps fell harder than the index in 2008, and gold roughly
+        # doubled in 1979. Either sign flipping means the columns are misaligned.
+        assert data.by_year[2008]["small_cap"] == pytest.approx(-0.447, abs=0.01)
+        assert data.by_year[1979]["gold"] == pytest.approx(1.0, abs=0.05)
+        assert data.by_year[2008]["small_cap"] < data.by_year[2008]["global_equity"]
 
     def test_nominal_returns_match_the_cited_source_exactly(self):
         """The *nominal* return implied by our stored (real, inflation) pair

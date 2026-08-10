@@ -101,8 +101,8 @@ is purchasing power, not future pounds.
 
 Needs **Node 18+** (for Claude Code) and **Python 3.10 or newer**.
 
-There are three things only you can do. Everything after them is ordinary
-setup that Claude Code will do for you, and will redo if it ever breaks.
+There are two things only you can do. Everything after them is ordinary setup
+that Claude Code will do for you, and will redo if it ever breaks.
 
 **1. Install Claude Code.** It is the interface to all of this, not an optional
 extra — see [Requires Claude Code](#requires-claude-code) above.
@@ -120,22 +120,17 @@ git clone https://github.com/SimonHaynes/claude_fire.git
 cd claude_fire
 ```
 
-**3. Get a free FRED API key** —
-[fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys),
-instant, no approval wait. You have to do this one yourself; nothing can sign
-up on your behalf.
-
-**4. Run `claude` and ask it to finish the setup.**
+**3. Run `claude` and ask it to finish the setup.**
 
 ```bash
 claude
 ```
 
 > set this repo up: create the venv, install the package, and build the market
-> and mortality data. My FRED key is <paste it here>
+> and mortality data
 
-It creates `.env`, builds the virtualenv, installs `.[report,dev]`, fetches the
-data and runs the tests — and if a step fails, it can read the error and fix
+It builds the virtualenv, installs `.[report,dev]`, fetches the data and runs
+the tests — and if a step fails, it can read the error and fix
 it, which is the reason to hand it the job rather than work through the
 commands below.
 
@@ -143,7 +138,6 @@ commands below.
 <summary>Doing it by hand instead</summary>
 
 ```bash
-cp .env.example .env                                  # add FRED_API_KEY=...
 python -m venv .venv                                  # .venv\Scripts\ on native Windows
 .venv/bin/pip install -e ".[report,dev]"
 .venv/bin/python tools/fetch_market_data.py
@@ -157,16 +151,16 @@ is dependency-free.
 
 </details>
 
-**Why the key is needed.** The market and mortality data is **not checked into
-this repo** — the sources' redistribution terms are unclear, so you rebuild it
-locally (see [Data](#data) and `DATA_SETUP.md`). FRED supplies the US CPI used
-to deflate every series to real terms, and the NBER recession series that
-drives the corporate credit model. Without it, `fetch_market_data.py` stops and
-no simulation will run: the default `global_equity` and `gov_bonds` series come
-from those files. The only keyless dataset is the GDP-weighted global panel,
-which is a deliberate opt-in for a specific question rather than a substitute
-(`tools/fetch_global_market_data.py`, and `standard-assumptions` on when it is
-the right call).
+**About the data.** It is **not checked into this repo** — the sources'
+redistribution terms are unclear, so you rebuild it locally (see [Data](#data)
+and `DATA_SETUP.md`). No API key is needed: returns and inflation both come
+from Damodaran's dataset at NYU Stern, and the mortality tables from ONS.
+
+**Optionally**, a free [FRED key](https://fredaccount.stlouisfed.org/apikeys)
+in `.env` adds one more file, the NBER recession series. It is worth having
+only if you hold corporate bonds — it is what lets `HeldToMaturityCredit`
+cluster defaults into recessions instead of spreading them evenly. Everything
+else works without it.
 
 ## Running a plan
 
@@ -374,38 +368,115 @@ no crash on the scale of 1929 or 1973-74. Plans then score ~100% — a statement
 about the sample, not the plan. **Report the window wherever you report a
 probability**, and treat any 0% or 100% as a red flag rather than a result.
 
-## Data
+## Data sources and asset classes
 
-`src/retireplan/data/` holds real annual returns and a mortality table, each
-with a full provenance header once fetched. Read them before trusting a
-number. **The CSVs are gitignored, not committed** — third-party market data
-redistribution terms are unclear enough that this repo ships none of it.
-Instead:
+**An asset's *type* and what it *earns* are separate choices.** `AssetType` is
+the tax wrapper — ISA, DC pension, GIA, property — and decides how withdrawals
+are taxed. The `ReturnModel` decides what it grows at. A gold holding inside an
+ISA is `AssetType.ISA` with `SampledSeries("gold")`; the same holding in a GIA
+differs only in the wrapper.
 
-```bash
-.venv/bin/python tools/fetch_market_data.py            # equity, bond, recession, corporate
-.venv/bin/python tools/build_mortality_csv.py --fetch   # mortality
+### Series available today
+
+Every one is a **real** (inflation-adjusted) annual return, except `inflation`
+and `recession`, which are the rates themselves.
+
+| Series | What it is | Source | Years | Needs a key |
+|---|---|---|---|---|
+| `global_equity` | S&P 500 total return, dividends included | Damodaran, NYU Stern | 1928– | no |
+| `gov_bonds` | 10-year US Treasury total return | Damodaran | 1928– | no |
+| `small_cap` | US small cap, bottom decile | Damodaran | 1928– | no |
+| `tbills` | 3-month T-Bill | Damodaran | 1928– | no |
+| `baa_corporate` | Moody's Baa-rated corporate bonds | Damodaran | 1928– | no |
+| `real_estate` | US residential property | Damodaran | 1928– | no |
+| `gold` | Gold | Damodaran | 1928– | no |
+| `inflation` | US CPI (CPIAUCNS), December to December | Damodaran's own FRED export | 1928– | no |
+| `short_corporate` | 1–5 year investment-grade corporate credit (IGSB) | Yahoo Finance | 2008– | no |
+| `recession` | Fraction of the year in an NBER-dated recession | FRED `USREC` | 1920– | **yes** |
+| `global_equity_gdpw`, `global_bonds_gdpw` | 16-country GDP-PPP-weighted panel | JST Macrohistory | 1900–2020 | no |
+
+Use any of them by name:
+
+```python
+Asset("SIPP — gold", AssetType.DC_PENSION, "Alex", 40_000, returns=SampledSeries("gold"))
+Asset("ISA — 60/40", AssetType.ISA, "Alex", 90_000,
+      returns=Blend.of(global_equity=0.6, gov_bonds=0.4))
 ```
 
+Mind the [sampling window](#sampling-windows): a scenario draws only from years
+where *every* series it touches has data, so adding one `short_corporate`
+holding cuts the bootstrap from 98 years to 18 and removes every crash worth
+worrying about.
+
+### What these series are not
+
+Each is honest about a specific gap, and the gaps matter more than the numbers:
+
+- **US, in dollars.** `global_equity` is a US proxy despite the name, which is
+  kept only because renaming it would break every existing household file. A UK
+  investor in a global tracker also carries decades of currency movement that
+  nothing here models.
+- **`real_estate` is US residential**, not UK house prices and not REITs. The
+  engine treats a `PROPERTY` asset as unspendable by default anyway, so this is
+  for modelling property as an *investment*, not the home you live in.
+- **`short_corporate` is investment grade.** A WiseAlpha-style holding at 6–8%
+  is not, so real drawdowns in a credit event would be deeper. See the file's
+  own header, and prefer `HeldToMaturityCredit` for paper held to redemption.
+- **The `*_gdpw` panel is survivorship-biased** — no Russia 1917, no China
+  1949 — and runs about 2 points a year hot against the UBS Yearbook's own
+  published figure. It is a deliberate opt-in for questions about US
+  concentration, not a better default. `standard-assumptions` says when to
+  reach for it.
+- **Nothing here covers** emerging markets, index-linked gilts, commodities
+  beyond gold, or anything crypto.
+
+### Adding a series
+
+`MarketData.load()` merges every CSV in `src/retireplan/data/` by year, so a
+new series is a new file and no engine change at all:
+
+```csv
+year,uk_house_prices
+1975,0.0412
+1976,-0.0233
+```
+
+Write a fetcher in `tools/` that documents its source in the CSV header the way
+the existing ones do, and `SampledSeries("uk_house_prices")` works immediately.
+Obvious candidates, none of them done: UK house prices (Nationwide and the Land
+Registry both publish freely), REITs via FTSE NAREIT, index-linked gilts, and
+MSCI EM from 1988. A GBP-denominated equity series is the biggest gap for UK
+users — the Barclays Equity Gilt Study and the DMS dataset both cover it, and
+both are licensed rather than free, which is why this repo does not ship one.
+
+## Data
+
+`src/retireplan/data/` holds the series above plus a mortality table, each with
+a full provenance header once fetched. Read them before trusting a number.
+**The CSVs are gitignored, not committed** — third-party market data
+redistribution terms are unclear enough that this repo ships none of it.
+Rebuild them instead:
+
+```bash
+.venv/bin/python tools/fetch_market_data.py             # returns, inflation, credit, recession
+.venv/bin/python tools/build_mortality_csv.py --fetch   # ONS life tables, England & Wales
+```
+
+Neither needs an API key, apart from the recession series — see
+[Data sources and asset classes](#data-sources-and-asset-classes) above for
+what that costs you.
+
+A rebuilt file is not byte-identical to a previous one: CPI is revised after
+first publication and both Damodaran and Yahoo extend their series each year.
+Agreement to several decimal places on older years is expected; a wrong sign or
+order of magnitude means something upstream broke.
+`tools/validate_market_data.py` checks the result against independently
+published figures — Damodaran's own page, the UBS Global Investment Returns
+Yearbook, MSCI World — and prints the gap against each.
+
 See [`DATA_SETUP.md`](DATA_SETUP.md) for exactly what each script fetches and
-from where — including what to do if the ONS page's layout ever changes
-under `--fetch` and it needs a manually-downloaded workbook instead. In
-outline:
-
-- `us_long_*.csv` — S&P 500 and 10-year Treasury total returns (NYU Stern /
-  Damodaran) deflated by US CPI. A US proxy for a global portfolio.
-- `us_short_corporate_*.csv` — short-dated corporate credit, from IGSB
-  adjusted closes (Yahoo Finance). A documented proxy for a WiseAlpha-style
-  holding; the file states the gaps (investment grade vs sub-IG, USD vs
-  sterling, diversified vs concentrated).
-- `us_recession_*.csv` — fraction of each year spent in an NBER-dated
-  recession (FRED `USREC`), which drives credit default incidence.
-- `mortality/ons_qx_ew_*.csv` — ONS national life tables, England & Wales.
-
-`fetch_market_data.py` needs a free FRED API key (see `.env.example`); the
-Damodaran and Yahoo Finance sources need no key. The fetched numbers should
-match the originals to within data-revision noise — the header each script
-writes documents the exact source and method, so a mismatch is diagnosable.
+from where, including what to do if the ONS page's layout changes under
+`--fetch` and it needs a manually-downloaded workbook instead.
 
 ## Mortality, survivorship and care
 

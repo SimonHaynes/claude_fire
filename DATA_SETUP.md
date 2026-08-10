@@ -10,21 +10,38 @@ below.
 ## Market data (equity, bonds, inflation, recession, corporate credit)
 
 ```bash
-cp .env.example .env
-# edit .env: add a free FRED API key from https://fredaccount.stlouisfed.org/apikeys
 .venv/bin/python tools/fetch_market_data.py
 ```
 
-This writes three files:
+**A FRED API key is optional.** It buys one file. Without it you get everything
+else, and lose only `retireplan.market.HeldToMaturityCredit`, which keys
+corporate-default incidence off the recession series — a plan holding no
+corporate bonds is unaffected. To have it:
+
+```bash
+cp .env.example .env
+# edit .env: add a free, instant key from https://fredaccount.stlouisfed.org/apikeys
+```
 
 | File | Source | Needs a key? |
 |---|---|---|
-| `us_long_<start>_<end>.csv` | NYU Stern (Damodaran) nominal S&P 500 / 10yr Treasury returns, deflated by FRED CPI | Yes (CPI) |
-| `us_recession_<start>_<end>.csv` | FRED `USREC`, aggregated to a fractional per-year figure | Yes |
-| `us_short_corporate_<start>_<end>.csv` | Yahoo Finance IGSB adjusted close, deflated by FRED CPI | Yes (CPI) |
+| `us_long_<start>_<end>.csv` | NYU Stern (Damodaran) nominal returns for seven asset classes, deflated by his own CPI sheet | No |
+| `us_short_corporate_<start>_<end>.csv` | Yahoo Finance IGSB adjusted close, deflated by the same CPI | No |
+| `us_recession_<start>_<end>.csv` | FRED `USREC`, aggregated to a fractional per-year figure | **Yes** |
 
-The FRED API key is free and instant — no approval wait. The Damodaran and
-Yahoo Finance requests need no authentication.
+`us_long_*.csv` carries seven real return series from one table — `global_equity`
+(S&P 500), `gov_bonds` (10-year Treasury), `small_cap`, `tbills`,
+`baa_corporate`, `real_estate` and `gold` — plus the `inflation` column that
+`FixedNominal` needs. Point a `SampledSeries` at any of them.
+
+**The deflator is Damodaran's own December-to-December CPI series**, taken from
+the `Inflation Rate` sheet of his `histretSP.xlsx`, not from FRED's API. It is
+the same underlying CPIAUCNS data, measured over the same window as the annual
+returns it deflates, and it is what removes the key requirement. It differs
+year by year from an annual-average measure — 2008 deflates at 0.09% rather
+than 3.8%, so the crash reads as −36.6% real rather than −38.9% — but the
+long-run annualised figures are unmoved, at 6.699% against 6.701% real on
+equities across 1928–2024.
 
 **A rebuilt file will not be byte-identical between two people, or between
 two runs a year apart.** CPI gets revised after first publication, and both
