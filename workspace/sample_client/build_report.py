@@ -218,12 +218,14 @@ def build_context() -> dict:
                 "body": (
                     f"Leaving as soon as notice allows clears only "
                     f"{pct(stretch.success_probability)}. {RECOMMENDED:%B %Y} clears "
-                    f"{pct(recommended.success_probability)}. The difference is not mainly "
-                    f"the extra saving — it is that the mortgage finishes and the gap "
-                    f"between stopping work and the pensions unlocking gets shorter, so "
-                    f"less has to come out of the ISAs while they are still the only "
-                    f"source. This would change if the mortgage were repaid early, which "
-                    f"would move the date earlier."
+                    f"{pct(recommended.success_probability)}. The mechanism is plain: "
+                    f"four and a half more years of salary and contributions go in, and "
+                    f"four and a half fewer years come out. Nothing else changes — Pat's "
+                    f"pension is already accessible, so there is no locked-up gap to "
+                    f"shorten, and the mortgage runs to 2038 either way, which is why it "
+                    f"is a drag on the early date rather than a reason for the later one. "
+                    f"What would change this: repaying the mortgage, or Robin working on "
+                    f"alone for a year or two, both buy back most of the difference."
                 ),
             },
             {

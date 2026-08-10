@@ -54,22 +54,34 @@ STRETCH = add_months(AS_OF, NOTICE_PERIOD_MONTHS)
 
 #: Where a quarterly sweep clears 95%, plus one quarter of margin.
 #:
-#: The base case fails badly (42%), so the question became "when does this
-#: actually work?" -- swept quarterly from 2029 to 2031:
+#: The base case does not clear (49.4%), so the question became "when does
+#: this actually work?" -- swept quarterly from 2029 to 2031 under all three
+#: withdrawal rules, because `GuytonKlinger` alone is not trustworthy for this
+#: (REVIEW.md 1.12, and see `define-scenarios`). Success on the worst of the
+#: three is what the date is chosen on:
 #:
-#:     2029-10  93.2%      2030-07  95.7%   <- RECOMMENDED
-#:     2030-01  94.4%      2030-10  96.5%
-#:     2030-04  95.2%      2031-01  97.2%
+#:              GK   SpendNominal  PostAccessStepUp    worst
+#:     2029-10  95.5%    92.8%          92.8%          92.8%
+#:     2030-01  96.5%    94.0%          93.9%          93.9%
+#:     2030-04  96.2%    95.0%          94.9%          94.9%
+#:     2030-07  97.0%    95.5%          95.2%          95.2%   <- crossing
+#:     2030-10  97.6%    96.4%          96.2%          96.2%   <- RECOMMENDED
+#:     2031-01  97.8%    96.9%          96.8%          96.8%
 #:
-#: April 2030 is the exact crossing point. The curve either side of it is a
-#: smooth ~1%/quarter slope rather than a cliff, so one quarter of margin is
-#: enough; on a cliff it would need more. Recommending the crossing point
-#: itself would leave a plan that fails on any small revision to the inputs.
-RECOMMENDED = date(2030, 7, 1)
+#: Note what taking GK on its own would have done: it clears 95% a full three
+#: quarters earlier, at 2029-10. That is the trap the sweep exists to avoid.
+#:
+#: July 2030 is the crossing point on the worst column. The curve either side
+#: is a smooth ~1.3 points/quarter slope rather than a cliff, so one quarter of
+#: margin is enough; on a cliff it would need more. Recommending the crossing
+#: point itself would leave a plan that fails on any small revision to the
+#: inputs.
+RECOMMENDED = date(2030, 10, 1)
 
-#: A further year, to show what waiting actually buys (97.9% — about two
-#: points for twelve months, which is usually less than clients expect).
-CONSERVATIVE = date(2031, 7, 1)
+#: A further year, to show what waiting actually buys (98.1% on the worst rule
+#: — about two points for twelve months, which is usually less than clients
+#: expect).
+CONSERVATIVE = date(2031, 10, 1)
 
 
 def _retire_both(when: date) -> dict[str, date]:
