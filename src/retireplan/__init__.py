@@ -14,6 +14,7 @@ Layout:
     tax                 jurisdiction rules behind one small interface
     market              historical data, return models, the bootstrap sampler
     plan                compiles household + scenario into a fixed schedule
+    diagnostics         what that schedule says before any market is run
     cashflow            runs one path of returns through that schedule
     simulation          runs thousands, and reduces them to decisions
     strategies          withdrawal / drawdown / allocation, freely composable
@@ -23,7 +24,7 @@ Layout:
 could alter a result, and stale cached answers invalidate themselves.
 """
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 from .cashflow import Projection, YearResult, project
 from .market import (
@@ -58,24 +59,31 @@ from .model import (
     Person,
     Phase,
 )
+from .diagnostics import PlanDiagnostics, diagnose
 from .plan import Plan, PlanYear, compile_plan
 from .care import CareModel, CareNeed, CarePlan, ImmediateNeedsAnnuity, MeansTest
 from .scenario import Gift, IncomeAnnuity, OneOffSpend, PensionLumpSum, Scenario
 from .serde import dump_household, household_from_dict, household_to_dict, load_household
 from .simulation import SimulationResult, project_once, run_many, run_monte_carlo
 from .strategies import (
+    VPW,
     BondTent,
+    BridgeGuardrail,
+    BridgeLadder,
     ByAssetTypeMix,
     CashBondLadder,
+    EndowmentSmoothing,
     GlidePath,
     GuytonKlinger,
     PercentOfPortfolio,
     PostAccessStepUp,
+    Ratchet,
     SpendNominal,
     StandardOrder,
     StaticMix,
     TaxEfficientOrder,
     ThreeBucketStrategy,
+    VanguardDynamicSpending,
     VariablePercentage,
 )
 from .tax.iht import UK_IHT, BequestBreakdown, IHTRules, effective_pension_death_rate
@@ -98,13 +106,16 @@ __all__ = [
     "FixedAge", "LifeTable", "MortalityModel",
     # engine
     "Plan", "PlanYear", "compile_plan", "Projection", "YearResult", "project",
+    "PlanDiagnostics", "diagnose",
     "Scenario", "OneOffSpend", "Gift", "PensionLumpSum", "IncomeAnnuity",
     "SimulationResult", "run_monte_carlo", "run_many", "project_once",
     # care
     "CareModel", "CareNeed", "CarePlan", "ImmediateNeedsAnnuity", "MeansTest",
     # strategies
-    "BondTent", "ByAssetTypeMix", "CashBondLadder", "GlidePath", "GuytonKlinger",
-    "PercentOfPortfolio", "PostAccessStepUp", "VariablePercentage", "SpendNominal",
+    "BondTent", "BridgeGuardrail", "BridgeLadder", "ByAssetTypeMix", "CashBondLadder",
+    "EndowmentSmoothing", "GlidePath", "GuytonKlinger", "PercentOfPortfolio",
+    "PostAccessStepUp", "Ratchet", "VPW", "VanguardDynamicSpending",
+    "VariablePercentage", "SpendNominal",
     "StandardOrder", "StaticMix", "TaxEfficientOrder", "ThreeBucketStrategy",
     # tax
     "UK", "UKTaxSystem", "UK_IHT", "IHTRules", "BequestBreakdown",

@@ -141,6 +141,24 @@ class PlanYear:
             for name in set(self.employment_income_by_person) | set(other)
         }
 
+    @property
+    def net_income(self) -> float:
+        """Scheduled income after income tax and NI, before anything drawn
+        from a portfolio. What spending has to be funded *beyond* is
+        `fixed_spend + nominal_discretionary - net_income`.
+
+        Excludes dividend tax, which depends on GIA balances and so on the
+        market path: `cashflow` subtracts it from this figure.
+        """
+        taxable = self.taxable_income_by_person
+        return (
+            sum(taxable.values())
+            - sum(self.tax.income_tax(v) for v in taxable.values())
+            - sum(self.tax.national_insurance(v)
+                  for v in self.employment_income_by_person.values())
+            + self.tax_free_income
+        )
+
 
 @dataclass(frozen=True)
 class SlotMaps:
@@ -573,7 +591,7 @@ def _spending_for_year(
         if expense.phase is Phase.PRE_RETIREMENT:
             exp_end = earliest(exp_end, household_retirement)
         elif expense.phase is Phase.RETIREMENT:
-            exp_start = household_retirement
+            exp_start = latest(expense.start, household_retirement)
             if expense.years_from_retirement is not None and household_retirement is not None:
                 exp_end = earliest(
                     exp_end, add_years(household_retirement, expense.years_from_retirement)

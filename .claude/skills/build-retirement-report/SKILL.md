@@ -127,9 +127,16 @@ university support run until then, which is why August scores 95.4% and
 September 97.6%" is a reason.
 
 Prefer the counter-intuitive finding when the model supports it, and explain the
-mechanism rather than softening it — de-risking a short bridge makes it worse
-(the money must grow through it, not merely survive it); good tax strategy
-produces a smaller estate and a larger inheritance (tax paid earlier, lower).
+mechanism rather than softening it — de-risking a bridge that has to grow
+through a heavy draw makes it worse, not safer; good tax strategy produces a
+smaller estate and a larger inheritance (tax paid earlier, lower).
+
+**A recommendation to spend less in order to stop earlier carries the worst-case
+spend with it.** Deferring discretionary spending until a pension unlocks is
+often the largest lever available to a bridge-limited household, but it trades a
+risk of forced cuts for a certainty of planned ones and leaves an adjusting rule
+nothing to flex. Give both dates, both spending levels, and let the client
+choose.
 
 **Where two reasonable models disagree, report the disagreement.**
 

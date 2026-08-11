@@ -208,6 +208,28 @@ class TestSpending:
         assert projection.years[1].discretionary_spending == pytest.approx(10_000)
         assert projection.years[2].discretionary_spending == 0.0
 
+    def test_start_defers_a_retirement_expense(self, flat_market):
+        """A retirement-phase expense starts at the later of the two dates.
+
+        `start` used to be overwritten by the retirement date, so deferring a
+        holiday or a replacement fund past a bridge silently did nothing and
+        scored identically to not deferring it.
+        """
+        household = Household(
+            people=[Person("A", date(1966, 1, 1))],
+            expenses=[
+                Expense("Big trip", 10_000, Frequency.YEARLY, ExpenseCategory.DISCRETIONARY,
+                        phase=Phase.RETIREMENT, start=date(2028, 1, 1)),
+            ],
+            assets=[Asset("ISA", AssetType.ISA, "A", 500_000, returns=FixedReal(0.0))],
+            assumptions=Assumptions(life_expectancy_age=64),
+        )
+        scenario = Scenario("retire now", retirement_dates={"A": AS_OF}, withdrawal=SpendNominal())
+        projection = run(household, scenario, flat_market)
+        assert projection.years[0].discretionary_spending == 0.0
+        assert projection.years[1].discretionary_spending == 0.0
+        assert projection.years[2].discretionary_spending == pytest.approx(10_000)
+
     def test_one_off_spend_lands_in_its_own_year(self, simple_household, flat_market):
         scenario = Scenario(
             "with a purchase",

@@ -35,6 +35,10 @@ class DrawdownContext:
     bond_slot: int
     dc_accessible_by_person: dict[str, bool]
     is_retired: bool
+    years_to_access: int
+    """Years until the DC pension unlocks -- 0 from the year it does. A
+    reserve built to cover a bridge has a known end date, so its target
+    shrinks every year; see `BridgeLadder`."""
     essential_spend: float
     growth_return: float
     bond_return: float
@@ -457,8 +461,16 @@ class CashBondLadder(DrawdownStrategy):
     The point is not the return on the reserve — it is deliberately low — but
     that it removes the forced sale of growth assets in a bad year, which is
     the mechanism by which sequence-of-returns risk actually does its damage.
-    The reserve is seeded from ISAs at retirement and topped back up in years
-    the market did not fall.
+
+    **Rule.**
+
+    | | |
+    |---|---|
+    | Seed | once, at the end of the first year of retirement, from ISAs |
+    | Size | `target_years` × essential spending, unchanging for the whole plan |
+    | Spend | after the cash reserve, before ISAs, GIAs and pensions |
+    | Refill | every year equities did not fall (`growth_return >= 0`), **back to the full target**, from ISAs — not merely replacing what was spent |
+    | Return | `real_return`, fixed |
 
     **Tested against a same-average-allocation rebalanced portfolio and it
     lost — worse success probability, worse worst-decile outcome, both on
@@ -502,6 +514,95 @@ class CashBondLadder(DrawdownStrategy):
 
 
 @dataclass
+class BridgeLadder(DrawdownStrategy):
+    """Match the bridge as a liability: carve out exactly what it costs to
+    reach pension access, hold it stably, spend it down to nothing, and
+    never top it back up.
+
+    This is what a defined-benefit scheme does with a known obligation, and
+    a bridge is the one part of a retirement plan that genuinely is one —
+    a fixed number of years of spending, ending on a date set by
+    legislation rather than by markets. Beyond that date the money is
+    long-horizon again and belongs in growth assets.
+
+    **Rule.**
+
+    | | |
+    |---|---|
+    | Seed | once, at the end of the first year of retirement, and only if the pension is still locked |
+    | Size | `cover` × essential spending × the bridge years *remaining after that year*, taken from ISAs (capped at what they hold) |
+    | Spend | after the cash reserve and before anything else, every year |
+    | Refill | **never** |
+    | Return | `real_return`, fixed |
+    | At access | nothing happens; any remainder is just drawn first until it is gone |
+
+    Sizing it as years × spending is the published shape of the idea and
+    ignores the `real_return` the reserve earns meanwhile, so it over-reserves
+    by a few per cent and typically outlives the bridge by a little. That
+    residue is spent first afterwards, which costs nothing beyond having held
+    it in a low-return asset for slightly too long.
+
+    **Never refilling is the whole design, not an omission.** `CashBondLadder`
+    and `ThreeBucketStrategy` hold a reserve of constant size and top it back
+    to full whenever markets allow, which sells growth assets in mediocre
+    years to fund a liability that has not shrunk — and both tested *worse*
+    than simply holding a lower equity allocation (REVIEW.md 1.15). A bridge
+    reserve has the opposite shape by construction: the liability shrinks by
+    one year every year, so the pot is meant to fall, and refilling it would
+    be funding a liability that no longer exists.
+
+    **And it still tested worse than holding no reserve at all** — 38.1%
+    success against `StandardOrder`'s 47.9% on a household whose bridge
+    binds, 0/6 of the classic worst historical starts funded either way, and
+    not one year of delay to the earliest failure (REVIEW.md 1.18). So the
+    refill rule was never what was wrong with the idea. A reserve moves money
+    from a 60%-equity mix into a 1% real asset for years, and where a bridge
+    binds that growth is exactly what it needed; the buffer buys sequence
+    protection with expected return, and at a 5% draw the return is worth
+    more. Offer this when a household wants the certainty, and price it as
+    the ~10-point cost it is.
+
+    A fixed `real_return` rather than a sampled bond series is deliberate:
+    the point of matching a dated liability is that you buy the instruments
+    that mature when you need them, so the return is locked at purchase and
+    is not a market variable. Model a bridge reserve left in equities by
+    setting `cover=0` and using `StandardOrder` instead — the comparison,
+    not the assumption, is what tells you whether the carve-out paid.
+    """
+
+    cover: float = 1.0
+    """Multiple of essential spending to hold per bridge year. Above 1.0
+    reserves for discretionary spending too; 0 disables the carve-out and
+    leaves this behaving as `StandardOrder`."""
+
+    real_return: float = 0.01
+    seeded: bool = field(default=False, init=False, repr=False)
+
+    def reset(self) -> None:
+        self.seeded = False
+
+    def resolve(self, need, portfolio, taxable_income, ctx):
+        result = DrawResult()
+        need -= portfolio.draw_pro_rata((ctx.cash_slot,), need)
+        need -= portfolio.draw_pro_rata((ctx.ladder_slot,), need)
+        result.unmet = _draw_isa_gia_then_pensions(need, portfolio, taxable_income, ctx, result)
+        return result
+
+    def end_of_year(self, portfolio, taxable_income, ctx):
+        portfolio.balances[ctx.ladder_slot] *= 1.0 + self.real_return
+        if self.seeded or not ctx.is_retired:
+            return
+        self.seeded = True
+        # The first year of retirement has already been funded by the time
+        # this runs, so the liability left to match is one year shorter.
+        remaining_bridge_years = ctx.years_to_access - 1
+        if remaining_bridge_years <= 0:
+            return
+        target = self.cover * remaining_bridge_years * ctx.essential_spend
+        portfolio.balances[ctx.ladder_slot] += portfolio.draw_pro_rata(ctx.isa_slots, target)
+
+
+@dataclass
 class ThreeBucketStrategy(DrawdownStrategy):
     """The classic three-bucket retirement income strategy: cash for
     near-term spending, bonds as the refill layer, equities for long-term
@@ -523,6 +624,16 @@ class ThreeBucketStrategy(DrawdownStrategy):
 
     **Bucket 3 (equities)** -- everything else, spent last via the ordinary
     ISA/GIA/pension fallback once both reserves are empty.
+
+    **Rule.**
+
+    | | |
+    |---|---|
+    | Seed | once, at the end of the first year of retirement, from ISAs |
+    | Size | `cash_years` and `bond_years` × essential spending, unchanging |
+    | Spend | cash, then bonds, then ISAs/GIAs/pensions |
+    | Refill 1 ← 2 | every year, unconditionally, back to full; equities make up any shortfall bonds cannot |
+    | Refill 2 ← 3 | every year equities did not fall (`growth_return >= 0`), back to full |
 
     Both reserves are seeded once, at retirement, from the ISA -- 7 years of
     spending (the sum of the two defaults) carved out of the growth

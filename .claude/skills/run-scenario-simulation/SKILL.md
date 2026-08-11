@@ -75,7 +75,9 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
    unlock, or access already reached in the first plan-year — it does *not* mean
    access happens at retirement, since someone modelled well before their access
    age still gets a real bridge range. A low end near zero deserves a sentence
-   in the report even where the plan technically succeeded.
+   in the report even where the plan technically succeeded. Where the bridge is
+   what limits the plan, `define-scenarios` lists the levers that move it and
+   the one that actually does.
 6. **A failed trial is not necessarily a ruined one.** `success_probability`
    counts one bad year anywhere in the horizon the same as total collapse.
    Inspect the failing trials — total unmet shortfall, number of bad years, the
@@ -97,6 +99,13 @@ as_of, n_trials=2000, seed=42, cache_dir="workspace/<name>/.cache")`.
    keeps growing while `["isa"]` stays flat, check whether ISA headroom is
    consumed elsewhere that year (`isa_headroom_used`) before trusting the tax
    figures. See `uk-pension-tax-strategy`'s GIA section.
+10. **Two arms agreeing to the pound is a collision, not a tie.** `cache_key`
+    hashes the household and the scenario, so any input the engine reads but
+    ignores — or ignores but hashes — makes genuinely different arms return one
+    answer. Diff the two inputs and confirm the field reaches a projection
+    before believing either number. This is also what a stale cache looks like:
+    `__version__` salts the key, so bump it whenever engine code could change a
+    result.
 
 ## When results look wrong
 

@@ -9,9 +9,13 @@ from retireplan import (
     Asset,
     AssetType,
     Assumptions,
+    VPW,
     BondTent,
+    BridgeGuardrail,
+    BridgeLadder,
     ByAssetTypeMix,
     CashBondLadder,
+    EndowmentSmoothing,
     Expense,
     ExpenseCategory,
     FixedReal,
@@ -22,12 +26,14 @@ from retireplan import (
     MarketData,
     Person,
     PostAccessStepUp,
+    Ratchet,
     SampledSeries,
     Scenario,
     SpendNominal,
     StandardOrder,
     StaticMix,
     ThreeBucketStrategy,
+    VanguardDynamicSpending,
     compile_plan,
     project,
 )
@@ -51,6 +57,8 @@ def context(**overrides) -> WithdrawalContext:
         growth_return=0.05,
         oldest_age=65,
         years_remaining=30,
+        bridge_value=1_000_000.0,
+        years_to_access=0,
         shortfall_for=lambda amount: max(0.0, amount - affordable_up_to),
     )
     defaults.update(overrides)
@@ -207,6 +215,169 @@ class TestAllocationStrategies:
         assert tent.real_return(self._asset(), market, 50) == pytest.approx(0.07)   # holds after recovering
 
 
+class TestRatchet:
+    def test_it_raises_once_the_portfolio_has_grown_far_enough(self):
+        strategy = Ratchet(trigger=1.5, step=0.10, min_years_between=3)
+        strategy.reset()
+        strategy.decide(context(year_index=0, portfolio_value=1_000_000))  # sets the baseline
+        assert strategy.decide(context(year_index=3, portfolio_value=1_600_000)) \
+            == pytest.approx(11_000.0)
+
+    def test_the_cadence_holds_it_back(self):
+        strategy = Ratchet(trigger=1.5, min_years_between=3)
+        strategy.reset()
+        strategy.decide(context(year_index=0, portfolio_value=1_000_000))
+        assert strategy.decide(context(year_index=2, portfolio_value=2_000_000)) \
+            == pytest.approx(10_000.0)
+
+    def test_it_never_cuts(self):
+        strategy = Ratchet()
+        strategy.reset()
+        strategy.decide(context(year_index=0, portfolio_value=1_000_000))
+        assert strategy.decide(context(year_index=5, portfolio_value=100_000)) \
+            == pytest.approx(10_000.0)
+
+    def test_the_baseline_does_not_reset_so_raises_repeat(self):
+        """Kitces' published rule keys off the value at retirement throughout,
+        so a portfolio parked above the trigger earns a raise every cadence."""
+        strategy = Ratchet(trigger=1.5, step=0.10, min_years_between=3)
+        strategy.reset()
+        strategy.decide(context(year_index=0, portfolio_value=1_000_000))
+        strategy.decide(context(year_index=3, portfolio_value=1_600_000))
+        assert strategy.decide(context(year_index=6, portfolio_value=1_600_000)) \
+            == pytest.approx(12_100.0)
+
+
+class TestVPW:
+    def test_the_rate_rises_as_the_horizon_shortens(self):
+        strategy = VPW(expected_real_return=0.03, ceiling=10.0)
+        early = strategy.decide(context(portfolio_value=1_000_000, years_remaining=40))
+        late = strategy.decide(context(portfolio_value=1_000_000, years_remaining=10))
+        assert late > early
+
+    def test_zero_expected_return_is_the_one_over_n_rule(self):
+        """PMT at 0% is 1/N — the RMD-style rule, and the arithmetic is
+        checkable by hand: 1/20 of £1m, plus £5,000 income, less £20,000 fixed."""
+        strategy = VPW(expected_real_return=0.0, ceiling=10.0)
+        spend = strategy.decide(context(portfolio_value=1_000_000, years_remaining=20))
+        assert spend == pytest.approx(50_000.0 + 5_000.0 - 20_000.0)
+
+    def test_it_does_nothing_before_retirement(self):
+        assert VPW().decide(context(is_retired=False)) == pytest.approx(10_000.0)
+
+
+class TestSmoothedRules:
+    def test_vanguard_clips_the_rise_to_the_ceiling(self):
+        strategy = VanguardDynamicSpending(rate=0.04, ceiling_rise=0.05)
+        strategy.reset()
+        first = strategy.decide(context(portfolio_value=1_000_000))
+        assert first == pytest.approx(40_000.0 + 5_000.0 - 20_000.0)
+        assert strategy.decide(context(portfolio_value=10_000_000)) \
+            == pytest.approx(first * 1.05)
+
+    def test_vanguard_clips_the_cut_to_the_floor(self):
+        strategy = VanguardDynamicSpending(rate=0.04, floor_drop=0.025)
+        strategy.reset()
+        first = strategy.decide(context(portfolio_value=1_000_000))
+        assert strategy.decide(context(portfolio_value=100_000)) \
+            == pytest.approx(first * 0.975)
+
+    def test_vanguard_anchors_on_what_was_actually_spent(self):
+        """A year the portfolio forced a cut restarts the band from the lower
+        figure, not from the number the rule asked for."""
+        strategy = VanguardDynamicSpending(rate=0.04)
+        strategy.reset()
+        strategy.decide(context(portfolio_value=1_000_000, affordable_up_to=8_000))
+        # Just under: the affordability search only ever returns a point it
+        # has verified, so it converges on the limit from below.
+        assert 7_900.0 < strategy.prior_spend <= 8_000.0
+
+    def test_endowment_moves_a_fifth_of_the_way(self):
+        strategy = EndowmentSmoothing(rate=0.04, weight_on_prior=0.8)
+        strategy.reset()
+        first = strategy.decide(context(portfolio_value=1_000_000))
+        target = 0.04 * 500_000 + 5_000 - 20_000
+        assert strategy.decide(context(portfolio_value=500_000)) \
+            == pytest.approx(0.8 * first + 0.2 * target)
+
+    def test_endowment_cuts_harder_than_vanguard_after_a_crash(self):
+        """The blend is unbounded, so it beats Vanguard's 2.5% floor to the
+        cut — the more responsive rule despite feeling like the gentler one."""
+        crash = dict(portfolio_value=1_000_000), dict(portfolio_value=400_000)
+        yale, vanguard = EndowmentSmoothing(), VanguardDynamicSpending()
+        for rule in (yale, vanguard):
+            rule.reset()
+            rule.decide(context(**crash[0]))
+        assert yale.decide(context(**crash[1])) < vanguard.decide(context(**crash[1]))
+
+
+class TestBridgeGuardrail:
+    def _bridging(self, **overrides):
+        defaults = dict(years_to_access=4, dc_accessible=False, bridge_value=100_000.0)
+        defaults.update(overrides)
+        return context(**defaults)
+
+    def test_it_cuts_when_the_bridge_will_not_reach_access(self):
+        strategy = BridgeGuardrail(adjustment=0.10)
+        strategy.reset()
+        # £40,000 of accessible money against four years needing £25,000 each.
+        strategy.decide(self._bridging(bridge_value=40_000))
+        assert strategy.multiplier == pytest.approx(0.9)
+
+    def test_it_leaves_a_comfortable_bridge_alone(self):
+        strategy = BridgeGuardrail()
+        strategy.reset()
+        strategy.decide(self._bridging(bridge_value=105_000))
+        assert strategy.multiplier == pytest.approx(1.0)
+
+    def test_it_restores_but_never_above_the_plan(self):
+        strategy = BridgeGuardrail(adjustment=0.10)
+        strategy.reset()
+        strategy.decide(self._bridging(bridge_value=40_000))       # cut to 0.9
+        strategy.decide(self._bridging(bridge_value=1_000_000))    # far ahead
+        assert strategy.multiplier == pytest.approx(0.99)
+        strategy.decide(self._bridging(bridge_value=1_000_000))
+        assert strategy.multiplier == pytest.approx(1.0)
+
+    def test_it_does_not_restore_into_a_falling_market(self):
+        strategy = BridgeGuardrail(adjustment=0.10)
+        strategy.reset()
+        strategy.decide(self._bridging(bridge_value=40_000))
+        strategy.decide(self._bridging(bridge_value=1_000_000, growth_return=-0.2))
+        assert strategy.multiplier == pytest.approx(0.9)
+
+    def test_the_whole_portfolio_rule_misses_what_this_one_catches(self):
+        """The point of the strategy: a bridge running dry beside a large
+        locked pension moves no whole-portfolio withdrawal rate at all."""
+        failing_bridge = self._bridging(bridge_value=40_000, portfolio_value=1_000_000)
+        klinger = GuytonKlinger()
+        klinger.reset()
+        klinger.decide(failing_bridge)
+        klinger.decide(failing_bridge)
+        assert klinger.multiplier == pytest.approx(1.0)
+
+        bridge = BridgeGuardrail()
+        bridge.reset()
+        bridge.decide(failing_bridge)
+        assert bridge.multiplier < 1.0
+
+    def test_access_hands_over_to_the_inner_rule_and_drops_the_cut(self):
+        strategy = BridgeGuardrail(after=PostAccessStepUp(step_up=1.25, surplus_years=1.0))
+        strategy.reset()
+        strategy.decide(self._bridging(bridge_value=40_000))
+        assert strategy.decide(context(years_to_access=0, dc_accessible=True)) \
+            == pytest.approx(12_500.0)
+
+    def test_reset_clears_the_inner_rule_too(self):
+        inner = PostAccessStepUp(surplus_years=1.0)
+        strategy = BridgeGuardrail(after=inner)
+        strategy.decide(self._bridging(bridge_value=40_000))
+        strategy.decide(context(years_to_access=0))
+        strategy.reset()
+        assert strategy.multiplier == 1.0
+        assert inner.stepped_up is False
+
+
 class TestDrawdownStrategies:
     def _household(self):
         return Household(
@@ -252,6 +423,59 @@ class TestDrawdownStrategies:
         ladder.seeded = True
         ladder.reset()
         assert ladder.seeded is False
+
+
+class TestBridgeLadder:
+    """A household that stops at 50 with the pension locked until 57."""
+
+    FLAT = {"global_equity": 0.0, "gov_bonds": 0.0, "inflation": 0.0}
+
+    def _run(self, strategy, born=date(1976, 1, 1), market=None):
+        household = Household(
+            people=[Person("A", born)],
+            expenses=[Expense("Living", 30_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[
+                Asset("ISA", AssetType.ISA, "A", 400_000, returns=SampledSeries("global_equity")),
+                Asset("Pension", AssetType.DC_PENSION, "A", 300_000,
+                      returns=SampledSeries("global_equity")),
+            ],
+            assumptions=Assumptions(life_expectancy_age=70, state_pension_age=99),
+        )
+        scenario = Scenario("retired", retirement_dates={"A": AS_OF},
+                            withdrawal=SpendNominal(), drawdown=strategy)
+        plan = compile_plan(household, scenario, UK, AS_OF)
+        return project(plan, [market or self.FLAT] * plan.n_years)
+
+    def _ladder(self, projection):
+        return [y.balances["__ladder_reserve"] for y in projection.years]
+
+    def test_it_carves_out_the_bridge_years_that_remain(self):
+        """Seeded at the end of year 1 of retirement, six bridge years left,
+        £30,000 of essential spending each."""
+        ladder = self._ladder(self._run(BridgeLadder(cover=1.0)))
+        assert ladder[0] == pytest.approx(6 * 30_000, rel=0.02)
+
+    def test_it_is_never_refilled(self):
+        """The liability shrinks every year, so the pot only ever falls."""
+        ladder = self._ladder(self._run(BridgeLadder(cover=1.0)))
+        assert all(b <= ladder[0] + 1 for b in ladder)
+
+    def test_it_is_all_but_spent_down_by_pension_access(self):
+        """Sized on years × spending, so the `real_return` it earns on top is
+        pure overshoot — a few per cent left over, spent first afterwards."""
+        ladder = self._ladder(self._run(BridgeLadder(cover=1.0)))
+        assert 0 <= ladder[6] < 0.05 * ladder[0]
+
+    def test_a_crash_is_not_paid_for_by_selling_equities(self):
+        crash = {"global_equity": -0.30, "gov_bonds": 0.0, "inflation": 0.0}
+        carved = self._run(BridgeLadder(cover=1.0), market=crash)
+        plain = self._run(StandardOrder(), market=crash)
+        assert carved.years[3].isa_withdrawn < plain.years[3].isa_withdrawn
+
+    def test_nothing_is_carved_out_when_there_is_no_bridge(self):
+        """Retiring at 60, past the access age, leaves no liability to match."""
+        ladder = self._ladder(self._run(BridgeLadder(), born=date(1966, 1, 1)))
+        assert ladder == [pytest.approx(0.0)] * len(ladder)
 
 
 class TestThreeBucketStrategy:
@@ -354,7 +578,8 @@ class TestShortfallTolerance:
             tax=tax, isa_slots=(0,), isa_slots_by_person={"A": (0,)},
             dc_slots_by_person={}, gia_slots_by_person={},
             cash_slot=1, ladder_slot=2, bond_slot=3, dc_accessible_by_person={},
-            is_retired=True, essential_spend=0.0, growth_return=0.0, bond_return=0.0,
+            is_retired=True, years_to_access=0, essential_spend=0.0,
+            growth_return=0.0, bond_return=0.0,
             isa_headroom_used={},
         )
         defaults.update(kw)

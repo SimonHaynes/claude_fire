@@ -54,7 +54,7 @@ possible, bounded only by hard constraints.
 | `GuytonKlinger` / `SpendNominal` / `PostAccessStepUp` | the spending rule |
 | `CashBondLadder` / `StandardOrder` / `TaxEfficientOrder` | the draw order |
 | `StaticMix` / `ByAssetTypeMix` / `GlidePath` / `BondTent` | allocation |
-| `market_stress=({"global_equity": -0.35}, ...)` | sequence-of-returns |
+| `market_stress=({"global_equity": -0.35}, ...)` | sequence-of-returns — forces the first N *plan* years from `as_of`, so for a household retiring later it lands **before** they stop, not after. Name the scenario accordingly |
 | `OneOffSpend` | any uncosted goal |
 | `care=CarePlan()`, and with `ImmediateNeedsAnnuity(enabled=True)` | care and its hedge |
 | `income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=...)` | a safety-first floor |
@@ -109,6 +109,122 @@ smooth slope needs a month or two of margin past the threshold, a cliff needs
 much more. Recommend the knee — where the curve flattens — not the crossing
 point itself, and say which you did.
 
+## When the bridge is what binds
+
+A household stopping before pension access funds everything from non-pension
+assets until it unlocks. The tells: failures cluster before access, a low
+`bridge_before_access()` p10, and success climbing steeply with each month of
+work. The bridge — not the portfolio — is then the constraint, and these are
+the levers. Effects are from one engagement with a four-year bridge, worst of
+three rules, at the earliest date notice allowed; treat them as calibration for
+which lever to reach for first, not as figures to quote.
+
+| Lever | How | Effect, in points of success |
+|---|---|---|
+| Defer discretionary spending to access | `Expense(phase=RETIREMENT, start=access_date)` | +23.8 for two items, +25.5 for all: bought a full year earlier |
+| De-risk the bridge's growth assets, re-risk at access | `ByAssetTypeMix`, or an `AllocationStrategy` targeting one wrapper | +1, or +8 against a crash — but **−16 at the earliest date** |
+| Redirect contributions from pension to ISA | `Contribution(employee_monthly=0)` | −0.2: relief beats liquidity unless the bridge runs dry |
+| Sell fixed income into the tracker | replace the asset's `returns` | −1.8 success, +£1.3m estate |
+
+- **Deferral is the large lever, and it is a spending decision, not an
+  investment one.** Nothing done to the asset mix moved more than a point or
+  two. Quote the worst-5% spend beside it: a pre-committed cut consumes the
+  headroom an adjusting rule needs, so the bad tail lands on the essential floor
+  with nothing left to flex. That trade — a certainty of planned cuts instead of
+  a risk of forced ones — is the client's to make, and belongs in the report.
+- **Protection has to be in place before they stop.** The crash variant lands in
+  the run-up to retirement, which is where sequence risk peaks, so an allocation
+  change dated from the retirement date answers a question nobody asked.
+- **Never de-risk a bridge permanently, and never assume the sign.** After
+  access, recycled pension money makes the same accounts long-horizon money
+  again. The de-risking worth a point at the recommended date cost 16 at a date
+  twelve months earlier, where the bridge must grow through a larger draw rather
+  than merely survive it. Run it at every date under consideration.
+- `PostAccessStepUp` expresses "lean now, more later" as a withdrawal rule
+  rather than an expense edit. Test both; they are not equivalent.
+- Debts are fixed schedules — `Debt.interest_rate` is recorded for the report
+  and never used — so clearing one early is pure cost here and cannot be tested.
+  Say that rather than reporting the loss as a finding.
+
+## Screen first, then choose what to run
+
+`diagnose(compile_plan(...))` reports, from the schedule alone and with no
+simulation, everything that decides which rules are worth testing:
+
+```python
+d = diagnose(compile_plan(household, base_scenario, UK, as_of))
+d.bridge_years, d.bridge_coverage, d.essential_bridge_coverage, d.initial_draw_rate
+```
+
+**C** = accessible money ÷ what the bridge must draw. **E** = the same against
+essential spending. Both zero-return, so they are the pessimistic reading; a
+60/40 mix over seven years multiplies them by roughly 1.3.
+
+**Read E first — it is a ceiling, not a preference.** Best success achievable
+by *any* rule, measured over a 105-run grid (REVIEW.md 1.19):
+
+| E | Ceiling | What to do |
+|---|---|---|
+| < 0.8 | **2.6%** | Stop. No spending rule fixes this. Test the retirement date, deferred spending, or moving money into a reachable wrapper. |
+| 0.8–1.0 | ~43% | Rules matter but cannot rescue it. Say so in the report before quoting any probability. |
+| 1.0–1.2 | ~70% | Worth the full comparison. |
+| ≥ 1.2 | 89–97% | The bridge is not the binding constraint. |
+
+**Then C, for whether a bridge rule is worth a run:**
+
+| C | `BridgeGuardrail` gain | Test it? |
+|---|---|---|
+| < 0.6 | +7.3 | Only after checking E — usually beyond rescue |
+| 0.6–0.8 | **+31.4** | Yes, at `floor=0.5` and `floor=0` |
+| 0.8–1.0 | +12.9 | Yes |
+| 1.0–1.2 | +2.9 | Marginal; only if E is also near 1 |
+| ≥ 1.2, or `bridge_years == 0` | **+0.0** | No — inert to within 0.1 points in every cell |
+
+- **Screen, don't decide.** These bands pick which candidates get a run. The
+  winner is still whatever the simulation says for the household in front of
+  you — quote measured numbers, never the band.
+- **The grid varies accessible share and spending only** — always a 7-year
+  bridge, 60% equity, one person. Treat the bands as ratios that should
+  travel, not as facts that have been checked at other shapes.
+
+## Choosing a withdrawal rule
+
+Measured in REVIEW.md 1.18 (`tools/compare_withdrawal_rules.py`): three
+households, same £800,000 and £40,000/yr, differing only in how much is
+reachable before pension access. Points are against `SpendNominal`.
+
+| Rule | Wide bridge | Thin bridge | No bridge | Reach for it when |
+|---|---|---|---|---|
+| `SpendNominal` | 47.9% | 6.3% | 79.3% | always, as the honest baseline |
+| `BridgeGuardrail` → inner rule | +13.8 | **+27.1** | 0.0 | a bridge binds — the only rule that reads it |
+| `GuytonKlinger` | +10.7 | **+0.2** | +7.7 | no bridge, and the client will accept cuts |
+| `PercentOfPortfolio` | +30.6 | **−3.3** | +14.9 | never for a bridge; good after access |
+| `EndowmentSmoothing` (Yale) | +48.1 | +23.1 | +20.2 | stability matters more than the plan's level |
+| `VanguardDynamicSpending` | +38.6 | +29.2 | +17.3 | as above, when a hard cap on cuts is wanted |
+| `Ratchet` (Kitces) | +2.4 | +1.5 | +0.2 | capturing upside without ever cutting |
+| `VPW` | −7.7 | −6.3 | −34.5 | only at a defensible assumed return; 0% (= 1/N) is far safer |
+
+- **A whole-portfolio rule cannot see a bridge.** Across the grid it gains
+  +27.3 points where there is *no* bridge problem and **+0.4** where the bridge
+  is tightest — the opposite of a protection profile. It rations early because
+  4% of the *total* is below the plan, which helps everywhere and is luck
+  rather than protection. Sharpest cell: £34,000 spending against £160,000
+  accessible — baseline 11.8%, `BridgeGuardrail` 56.1%, `PercentOfPortfolio`
+  **2.0%**, Yale **1.9%**. Both worse than doing nothing, exactly where reading
+  the constraint matters most.
+- **`GuytonKlinger` will not cut during a failing bridge** — its denominator
+  includes the locked pension. Compose it: `BridgeGuardrail(after=GuytonKlinger())`.
+- **Read the spend columns.** Vanguard scored 35.5% on the thin bridge with a
+  *median* spend of £26,000 — the essential floor, permanently — and a median
+  bequest larger than the starting portfolio. Success bought by starvation.
+- **"A percentage rule cannot run out" is false here.** Every one has a `floor`,
+  and the floor is what reintroduces failure. Say so rather than quoting the
+  textbook claim.
+- **The largest single lever is how far the client will cut**, not which rule.
+  `BridgeGuardrail` gained 10.6 further points on the thin bridge by moving
+  `floor` from 0.5 to 0 (essentials only). That is the client's decision and
+  belongs in the report as one.
+
 ## Choosing a drawdown order
 
 `StandardOrder` (cash, ISA, pension) is intuitive and usually the wrong lead for
@@ -157,9 +273,14 @@ from 80% down to 40%. Too conservative is its own failure mode: 0% equity scored
 48.0% with a *median* ending wealth of zero. Model sequence-risk protection as
 an allocation decision, not a drawdown-order one.
 
-This is not a claim that no bucket variant could help — the refill-to-full rule
-is specifically what fails, and a gentler rule was never built. Until it is, run
-the comparison for the actual household rather than trusting the branding.
+**The refill rule was never the problem.** `BridgeLadder` is the strongest form
+of the counter-argument — sized to the actual bridge liability, shrinking a year
+every year, *never* refilled — and it still cost 9.8 points against holding no
+reserve at all, funded none of the six worst starts, and delayed the earliest
+failure by not one year (REVIEW.md 1.18). A reserve moves money from a
+60%-equity mix into a 1% real asset for years; where the bridge binds, that
+growth is exactly what was needed. Offer `BridgeLadder` when a household wants
+the certainty and price it as the ~10-point cost it is, not as a safeguard.
 
 ## Cautions
 

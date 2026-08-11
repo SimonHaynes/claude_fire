@@ -473,6 +473,210 @@ which the engine default contradicts. Left alone deliberately: flipping it
 moves every number the engine has ever produced, and 1.3 chose attributability
 over a silent change.
 
+---
+
+### 1.18 Withdrawal rules keyed off a portfolio nobody can reach — **high** — NOW MODELLED
+
+Audited the published withdrawal-rule literature against what the engine
+could express, shipped what was missing, and measured all of it. Method:
+`tools/compare_withdrawal_rules.py` — three fabricated single-person
+households, each £800,000 against £40,000/yr (£26,000 essential), 60% equity
+`StaticMix` throughout so only the rule varies, 2,000-trial block bootstrap
+plus the six classic worst historical starts. The households differ only in
+how much of the same £800,000 is reachable:
+
+* **Bridge** — 50, £240k ISA / £560k pension. Needs 7 × £40k from £240k.
+* **Thin bridge** — 50, £180k ISA / £620k pension. £180k against seven years
+  of *essential* spending alone (£182k).
+* **No bridge** — 60, £240k / £560k, all of it reachable.
+
+**Shipped.** `Ratchet` (Kitces), `VPW` (Bogleheads; at a 0% assumed return it
+is the 1/N or RMD rule), `VanguardDynamicSpending` (5%/2.5% band on the
+year-on-year change), `EndowmentSmoothing` (the Yale 80/20 blend),
+`BridgeGuardrail` (new — guardrails on the *accessible* money, handing over
+to an inner rule at access), and `BridgeLadder` (a liability-matched bridge
+reserve that is never refilled). `WithdrawalContext` gained `bridge_value`
+and `years_to_access`; `DrawdownContext` gained `years_to_access`.
+
+**Finding 1 — a whole-portfolio rule cannot see a bridge, and the protection
+people credit to it is luck.** Success probability, against `SpendNominal`:
+
+| Rule | Bridge | Thin bridge | No bridge |
+|---|---|---|---|
+| `SpendNominal` (baseline) | 47.9% | 6.3% | 79.3% |
+| `PercentOfPortfolio` 4% | **78.5%** | **3.0%** | 94.2% |
+| `EndowmentSmoothing` (Yale) | **96.0%** | 29.4% | 99.5% |
+| `VanguardDynamicSpending` | 86.5% | 35.5% | 96.6% |
+| `GuytonKlinger` | 58.6% | 6.5% | 87.0% |
+| `Ratchet` (Kitces) | 50.3% | 7.8% | 79.5% |
+| `VPW` (3.5% assumed) | 40.2% | 0.0% | 44.8% |
+| `VPW` 0% (= 1/N, RMD) | 68.5% | 38.7% | 77.3% |
+| `BridgeGuardrail` → `SpendNominal` | 61.7% | 33.4% | 79.3% |
+| `BridgeGuardrail` → `GuytonKlinger` | 68.5% | 35.0% | 87.0% |
+| `BridgeGuardrail`, floor 0 (essentials) | 64.5% | **44.0%** | 79.3% |
+
+`PercentOfPortfolio` gains **+30.6 points** on the bridge household and
+**−3.3** on the thin one. Nothing about the rule changed; only which share of
+the same £800,000 was reachable. It "protects" a bridge by rationing early —
+4% of £800,000 is £32,000, comfortably below the £40,000 plan — and that
+rationing happens to be about the right size when the ISA is large enough. It
+is not reading the constraint, and when the accessible share shrinks below
+what its arithmetic implies, the protection vanishes entirely. The same
+applies, less severely, to Yale (+48.1 → +23.1) and Vanguard (+38.6 → +29.2).
+
+`BridgeGuardrail` moves the other way — **+13.8 points on the bridge, +27.1
+to +37.7 on the thin bridge** — because it is the only rule whose denominator
+is the money that can actually be spent. It is exactly inert with no bridge
+(79.3%, identical to `SpendNominal` to the trial), which is the right
+behaviour and a useful check that it is not quietly doing something else.
+
+**Finding 2 — `GuytonKlinger` does not cut during a failing bridge.** Its
+guardrail is `(spending − income) / portfolio`, and the portfolio includes a
+pension that cannot be touched, so an ISA draining to zero barely moves it.
+It contributed +10.7 points on the bridge household and **+0.2** on the thin
+one, where the bridge is the entire problem. Composing it behind
+`BridgeGuardrail` recovers this: 68.5% and 35.0%.
+
+**Finding 3 — the guardrail band and step should be tighter for a bridge than
+for a portfolio.** Sweeping `BridgeGuardrail` on the bridge household: a 0%
+dead band beat 10% by ~2 points and 20% by ~5, monotonically, and a 25% step
+beat 10% by ~3 points at every band. A dead band exists to stop a rule
+reacting to noise it has decades to ride out; a bridge has neither the decades
+nor the mean reversion. Those measurements are now the defaults, and are
+recorded on the fields themselves.
+
+**Finding 4 — "cannot run out of money" is false for every portfolio-based
+rule as implemented, and the reason is the floor.** `VPW` at a 3.5% assumed
+real return scored 40.2% / 0.0% / 44.8% — the worst rule in the table — not
+because the rule overspends early (its target at a 45-year horizon is £35,500,
+*below* the plan) but because its 0.5 floor holds spending up when the rule
+wants to go lower. Remove the floor and the rule is unfailable and
+unliveable. `VPW` at 0% (the 1/N / RMD rule) is far better everywhere, which
+makes the assumed-return parameter the whole rule rather than a detail.
+
+**Finding 5 — success bought by permanent starvation must be read off the
+spend columns.** `VanguardDynamicSpending` on the thin bridge reports 35.5%
+success with a **median spend of £26,000** — the essential floor, every year
+— and a median net bequest of £991,466 against a £800,000 starting portfolio.
+It "succeeds" by never spending. The success column alone would have
+recommended it.
+
+**Finding 6 — a bridge reserve is not rescued by fixing the refill rule.**
+1.15 indicted `CashBondLadder` and `ThreeBucketStrategy` for topping a
+constant-sized reserve back to full and left open whether a gentler rule would
+behave differently. `BridgeLadder` is the strongest form of that argument —
+sized to the actual liability, shrinking by a year every year, **never**
+refilled, so the over-extraction mechanism 1.15 identified cannot occur. On
+the bridge household, `SpendNominal` throughout:
+
+| Reserve | Success | Six worst starts |
+|---|---|---|
+| `StandardOrder` (none) | **47.9%** | 0/6, earliest failure yr 4 |
+| `BridgeLadder` (matched, never refilled) | 38.1% | 0/6, earliest failure yr 4 |
+| `BridgeLadder` covering discretionary too | 17.5% | 0/6, earliest failure yr 4 |
+| `CashBondLadder` 3y | 41.2% | 0/6, earliest failure yr 4 |
+| `ThreeBucketStrategy` | 27.6% | 0/6, earliest failure yr 4 |
+
+The carve-out **cost 9.8 points**, and the bigger the carve-out the worse it
+got. No reserve funded any of the six worst historical starts, and none
+delayed the earliest failure by even a year. So the refill rule was never the
+problem: the problem is that a reserve moves money from a 60%-equity mix into
+a 1% real asset for seven years, and when the bridge is the binding constraint
+that growth is exactly what the bridge needed. The buffer buys protection
+against sequence risk with expected return, and at a 5% draw the expected
+return is worth more than the protection. `BridgeLadder` is kept because it is
+the honest form of the idea and a household may want the certainty — but it is
+a cost, priced here at ~10 points of success, not a free safeguard.
+
+**Deliberately still not built: CAPE-based valuation-aware withdrawal.** Not
+scope this time but genuinely untestable on this engine: the block bootstrap
+samples returns without the valuation level that produced them, and
+block-sampling destroys the mean reversion the rule exists to exploit. Any
+result would measure the sampler. It needs a valuation-carrying return model
+first; this is now recorded in `strategies/withdrawal.py` rather than left as
+a to-do.
+
+---
+
+### 1.19 Which rules to test was a judgement call; it is now a screen — **medium** — NOW MODELLED
+
+1.18 left the *selection* of candidate rules to a reader eyeballing a nine-row
+results table. Everything that decides it is fixed at compile time, so
+`retireplan.diagnose(plan)` now reports it from the schedule alone — no
+returns, no strategies, no simulation:
+
+| | |
+|---|---|
+| `bridge_years` | retirement → first DC unlock (for a couple the *first*: one accessible pension funds the household) |
+| `bridge_coverage` **C** | accessible money ÷ everything the bridge must draw |
+| `essential_bridge_coverage` **E** | the same against essential spending — the floor a rule cannot cut through |
+| `initial_draw_rate` | first retired year's draw ÷ portfolio |
+
+Zero-return throughout, deliberately: it is a screen for deciding whether to
+worry, and a 60/40 mix over seven years would multiply the ratios by ~1.3.
+
+**The bands are measured, not asserted.**
+`tools/validate_bridge_diagnostics.py` sweeps a 7 × 3 grid — accessible share
+£120k–£400k × spending £34k–£46k, £800,000 total and 60% equity held constant
+— 2,000 trials per cell, five rules per cell, 105 runs. Three claims were put
+to it; two survived as stated and one needed correcting.
+
+**Claim 1 holds, and E is a strong predictor of the ceiling.** Best success
+achievable by *any* of the five rules:
+
+| E | cells | mean ceiling | range |
+|---|---|---|---|
+| < 0.8 | 4 | **2.6%** | 0.0–5.4% |
+| 0.8–1.0 | 2 | 42.7% | 26.7–58.7% |
+| 1.0–1.2 | 3 | 69.9% | 56.1–88.2% |
+| 1.2–1.5 | 3 | 88.8% | 79.8–96.0% |
+| ≥ 1.5 | 9 | 96.7% | 91.0–99.3% |
+
+Below E = 0.8 the plan cannot be rescued by any spending rule, and running
+five of them to discover that is five wasted runs.
+
+**Claim 2 was wrong in shape.** "`BridgeGuardrail` earns its place where C < 1"
+is not what the surface says — the gain is an inverted U, and below C = 0.6
+there is nothing left to save:
+
+| C | cells | mean gain over `SpendNominal` | range |
+|---|---|---|---|
+| < 0.6 | 5 | +7.3 | 0.0 to +25.9 |
+| 0.6–0.8 | 4 | **+31.4** | +18.5 to +44.3 |
+| 0.8–1.0 | 4 | +12.9 | +1.5 to +26.7 |
+| 1.0–1.2 | 4 | +2.9 | +0.4 to +7.4 |
+| ≥ 1.2 | 4 | **+0.0** | +0.0 to +0.1 |
+
+**Claim 3 holds exactly.** At C ≥ 1.2 the bridge rules are inert to within a
+tenth of a point across every cell — the strongest possible form of "do not
+spend a run on this", and a useful regression check on the strategy itself.
+
+**And the surface confirms 1.18's mechanism claim, which three households
+could only suggest.** A whole-portfolio rule's gain, by the same C bands:
+
+| C | mean gain | range |
+|---|---|---|
+| < 0.6 | **+0.4** | 0.0 to +1.2 |
+| 0.6–0.8 | +37.3 | **−9.8** to +62.1 |
+| 0.8–1.0 | +42.6 | +21.3 to +53.0 |
+| ≥ 1.2 | +27.3 | +15.2 to +46.1 |
+
+It gains 27 points where there is no bridge problem at all and **0.4 points
+where the bridge is tightest** — the exact opposite of a bridge-protection
+profile, and it stays large after the constraint disappears because the gain
+was never about the bridge: a 4%-of-portfolio rule re-plans the household to a
+smaller budget, which helps everywhere. The single clearest cell is £34,000 of
+spending against £160,000 accessible: baseline 11.8%, `BridgeGuardrail` at
+floor 0 **56.1%**, `PercentOfPortfolio` **2.0%** and Yale **1.9%** — both
+whole-portfolio rules *worse than doing nothing*, in the cell where reading
+the constraint matters most.
+
+**Caveat.** The grid varies the accessible share and the spending level. It
+does not vary bridge length (always 7 years), allocation (always 60% equity),
+or household shape (always a single person). The bands are stated as ratios
+because ratios should travel better than levels, but that is an argument, not
+a measurement. Widening the grid is the obvious next validation.
+
 ## 2. Skills and agents
 
 **What works.** Splitting intake / scenarios / simulate / report matches how
@@ -541,9 +745,15 @@ would otherwise have shipped.
 | PCLS greedily claimed the whole Lump Sum Allowance before a same-day `PensionLumpSum` request got to it | A test asserting the two should share the allowance failed with PCLS taking the full £268,275 | An explicit request would have silently received none of the relief it asked for, if scheduled the same plan-year as automatic PCLS-at-access |
 | A household with no `ISA` `Asset` had nowhere for surplus, a PCLS, or Bed-and-ISA to shelter money — the GIA fallback was synthesised automatically, the ISA was not, and neither errored | The user asking "does this assume part of the income comes from the GIA/ISA?" of a PCLS-vs-UFPLS comparison | Understated PCLS's tax advantage by tens of thousands of pounds over 30+ years in that comparison. **Fixed at the engine level**, not just documented: `plan.py` now synthesises a zero-balance ISA per person the same way it already did a GIA, `SURPLUS_ISA_NAME`, only for people without an explicit one already |
 
+| `Expense.start` silently overwritten by the retirement date for any `Phase.RETIREMENT` expense (`plan.py`) | Three deferral arms of a lean-bridge test returned identical results *to the pound* | Deferring a holiday or a replacement fund past a bridge — the largest lever available to a bridge-limited household — could not be expressed at all, and scored as a null result rather than erroring. Fixed to `latest(expense.start, household_retirement)`, engine 1.5.1 |
+
 The pattern: **every one was caught by looking at a number that seemed too
 good, by rendering the output and reading it, or by someone asking why a
 number was built the way it was.** None of the three is automatable.
+
+Twice now, a knob that changed nothing has shown up as **two arms agreeing to
+the pound** (`death_ages`, then `Expense.start`). Identical results across
+genuinely different inputs is the single most reliable tell this project has.
 
 ---
 

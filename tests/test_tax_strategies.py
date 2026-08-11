@@ -423,6 +423,7 @@ def ctx(**overrides) -> WithdrawalContext:
                     nominal_discretionary=20_000.0, fixed_spend=30_000.0,
                     net_income=10_000.0, portfolio_value=1_000_000.0,
                     growth_return=0.05, oldest_age=65, years_remaining=30,
+                    bridge_value=1_000_000.0, years_to_access=0,
                     shortfall_for=lambda a: max(0.0, a - affordable))
     defaults.update(overrides)
     return WithdrawalContext(**defaults)
@@ -546,7 +547,8 @@ class TestDryRunIsolation:
             tax=UK, isa_slots=(), isa_slots_by_person={"a": ()},
             dc_slots_by_person={"a": (0,)}, gia_slots_by_person={"a": ()},
             cash_slot=1, ladder_slot=None, bond_slot=None,
-            dc_accessible_by_person={"a": True}, is_retired=True, essential_spend=0.0,
+            dc_accessible_by_person={"a": True}, is_retired=True, years_to_access=0,
+            essential_spend=0.0,
             growth_return=0.0, bond_return=0.0, isa_headroom_used={},
             pension_access=PensionAccess.UFPLS,
             tax_free_cash_used={"a": 0.0}, crystallised={"a": 0.0},

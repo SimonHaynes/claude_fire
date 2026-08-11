@@ -570,6 +570,12 @@ def project(
     second_death = max(deaths.values()) if deaths else plan.n_years
 
     portfolio = Portfolio(list(plan.opening_balances))
+    dc_slots = {s for slots in plan.dc_slots_by_person.values() for s in slots}
+    bridge_slots = tuple(s for s in plan.investable_slots if s not in dc_slots)
+    # Pension access is age-driven, so the base variant dates it for every
+    # variant; a survivor who inherits an already-accessible pot only ever
+    # gains access earlier, which `year.dc_accessible` reports directly.
+    access_index = next((y.index for y in plan.years if y.dc_accessible), plan.n_years)
     tax_free_cash_taken: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
     crystallised: dict[str, float] = {name: 0.0 for name in plan.dc_slots_by_person}
     pcls_fired: set[str] = set()
@@ -628,12 +634,11 @@ def project(
         taxable = year.taxable_income_by_person
         tax_paid = sum(tax.income_tax(v) for v in taxable.values()) + dividend_tax_paid
         ni_paid = sum(tax.national_insurance(v) for v in year.employment_income_by_person.values())
-        net_income = (
-            sum(taxable.values()) - tax_paid - ni_paid + year.tax_free_income
-        )
+        net_income = year.net_income - dividend_tax_paid
 
         growth_return = market.get("global_equity", 0.0)
         bond_return = market.get("gov_bonds", 0.0)
+        years_to_access = 0 if year.dc_accessible else max(0, access_index - i)
 
         care_cost = 0.0
         care_state_funded = 0.0
@@ -655,6 +660,7 @@ def project(
                 p: accounts.can_draw_pension(p, year) for p in slots.dc_slots_by_person
             },
             is_retired=year.is_retired,
+            years_to_access=years_to_access,
             essential_spend=year.essential,
             growth_return=growth_return,
             bond_return=bond_return,
@@ -695,6 +701,8 @@ def project(
                         (a for n, a in year.ages.items() if n in alive), default=0
                     ),
                     years_remaining=second_death - i,
+                    bridge_value=portfolio.sum_of(bridge_slots),
+                    years_to_access=years_to_access,
                     shortfall_for=shortfall_for,
                 )
             )
