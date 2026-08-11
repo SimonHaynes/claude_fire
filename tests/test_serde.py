@@ -55,13 +55,13 @@ class TestHouseholdRoundTrip:
                     Person("Bo", date(1972, 9, 1), state_pension_qualifying_years=22)],
             assets=[
                 Asset("ISA", AssetType.ISA, "Ada", 150_000,
-                      returns=SampledSeries("global_equity"), annual_charge_pct=0.0014),
-                Asset("Bond", AssetType.ISA, "Ada", 30_000, returns=FixedNominal(0.08),
-                      maturity=Maturity(on=date(2026, 11, 5), rollover_to="ISA")),
+                      returns=SampledSeries("global_equity"), annual_charge_pct=0.0015),
+                Asset("Bond", AssetType.ISA, "Ada", 30_000, returns=FixedNominal(0.05),
+                      maturity=Maturity(on=date(2027, 1, 1), rollover_to="ISA")),
                 Asset("Pension", AssetType.DC_PENSION, "Bo", 120_000,
                       returns=SampledSeries("global_equity"),
                       contributions=Contribution(500, 300, end=date(2035, 6, 1))),
-                Asset("Teachers", AssetType.DB_PENSION, "Bo",
+                Asset("DB scheme", AssetType.DB_PENSION, "Bo",
                       defined_benefit=DefinedBenefit(10_000, 60, 15_000)),
             ],
         )
