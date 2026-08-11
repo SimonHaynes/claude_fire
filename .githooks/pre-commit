@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Enable with: git config core.hooksPath .githooks
+#
+# Hooks are not cloned, so this is per-machine setup. `tools/setup_hooks.sh`
+# does it, and `tests/test_no_personal_data.py` fails if the hook stops being
+# wired up on a machine that has wired it up before.
+set -uo pipefail
+
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif [ -x .venv/bin/python ]; then
+    PYTHON=.venv/bin/python
+else
+    echo "pre-commit: no python found; cannot check for personal data" >&2
+    exit 1
+fi
+
+exec "$PYTHON" tools/check_no_personal_data.py

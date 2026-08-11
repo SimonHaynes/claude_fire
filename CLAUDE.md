@@ -33,6 +33,20 @@ never reach a commit, a test fixture, a docstring, an example or a log line.
   client directory as correct, not as something to fix.
 - A key that has been committed is burned: rotate it, do not just amend history.
 
+**Every person named anywhere in the repo must be on `ALLOWED_PEOPLE` in
+`tools/check_no_personal_data.py`.** Adding a name is the moment to check the
+figures beside it were invented too. The `.githooks/pre-commit` hook enforces
+this and refuses NI numbers, sort codes, emails, keys and anything staged out of
+a real `workspace/` directory. Enable it once per clone with
+`tools/setup_hooks.sh`.
+
+This applies to prose as much as to code. A test fixture and a worked example in
+a skill are data like any other file, and neither `.gitignore` nor a directory
+rule can see them.
+
+Real data must not reach a memory file, a TODO, a commit message or a scratch
+script either. None of those are covered by the hook.
+
 ## Skills, agents and other context files
 
 These are loaded into a context window on every use, so words cost tokens on every run.
