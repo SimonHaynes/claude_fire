@@ -746,14 +746,30 @@ would otherwise have shipped.
 | A household with no `ISA` `Asset` had nowhere for surplus, a PCLS, or Bed-and-ISA to shelter money — the GIA fallback was synthesised automatically, the ISA was not, and neither errored | The user asking "does this assume part of the income comes from the GIA/ISA?" of a PCLS-vs-UFPLS comparison | Understated PCLS's tax advantage by tens of thousands of pounds over 30+ years in that comparison. **Fixed at the engine level**, not just documented: `plan.py` now synthesises a zero-balance ISA per person the same way it already did a GIA, `SURPLUS_ISA_NAME`, only for people without an explicit one already |
 
 | `Expense.start` silently overwritten by the retirement date for any `Phase.RETIREMENT` expense (`plan.py`) | Three deferral arms of a lean-bridge test returned identical results *to the pound* | Deferring a holiday or a replacement fund past a bridge — the largest lever available to a bridge-limited household — could not be expressed at all, and scored as a null result rather than erroring. Fixed to `latest(expense.start, household_retirement)`, engine 1.5.1 |
+| Dividend rates a tax year stale (8.75/33.75 where 2026/27 is 10.75/35.75), and the state pension still at its 2025/26 £11,973 | Checking the shipped constants against gov.uk one at a time, instead of against the freeze | The module docstring argued the threshold freeze made 2025/26 figures right for 2026/27. True of thresholds; the dividend rates rose 2pp in April 2026 and the state pension uprates every April. **A freeze binds only what it names** — the docstring now says so |
+| Dividends inside an unused personal allowance were taxed (`dividend_tax`) | Working gov.uk's own dividend example, then moving other income below £12,570 | Over-taxed by up to £961/yr on £20k of dividends, worst with *no* other income — precisely the pre-state-pension bridge years. Made bridge-heavy plans look worse than they are |
+| The £500 dividend allowance treated as a deduction, not a nil-rate band | Same pass; a comment asserted it behaved like the CGT exempt amount, and it does not | Under-taxed near the higher-rate threshold: the £500 is charged at 0% but still occupies basic-rate room, so it pushes later dividends up a band |
+| CGT basic-rate room measured from *gross* income against £50,270, not taxable income against £37,700 | Income below the personal allowance is the only place the two disagree | Handed a low-income seller up to £12,570 of extra 18% room — under-taxing by up to £754/person/yr. Worse, `gia_gross_for_net` shared the band edge, so the engine **sold too little GIA and silently under-funded spending** by the same amount. Both now go through `cgt_basic_rate_room` so the inverse cannot drift from the forward function |
+| The state pension defined three times, and the projection read the stale copy | Uprating `tax/uk.py`'s figure and finding the sample client's success probabilities *identical to four decimal places* | `plan.py` reads `Assumptions.state_pension_annual`, not `UKTaxSystem.full_state_pension_annual`; `serde` held a third copy as a fallback. The authoritative-looking definition — the one carrying the verification date and the triple-lock docstring — was the one nothing used. Correcting the figure the engine actually reads moved the immediate-retirement date 35.4% → 37.4%. `Assumptions` now defaults from the constant and `serde` reads its fallbacks off the dataclass |
+| The £3,000 CGT exempt amount granted twice in one plan-year | Reading who calls `capital_gains_tax`, not what it returns | `capital_gains_tax` is stateless, and both GIA drawdown and the end-of-year Bed-and-ISA sweep called it for the same person in the same year — each assuming a full exemption. Worth up to £720/person/yr. Fixed with a per-year `cgt_exempt_used` ledger, threaded like `isa_headroom_used` and copied by `for_dry_run` |
 
 The pattern: **every one was caught by looking at a number that seemed too
 good, by rendering the output and reading it, or by someone asking why a
 number was built the way it was.** None of the three is automatable.
 
-Twice now, a knob that changed nothing has shown up as **two arms agreeing to
-the pound** (`death_ages`, then `Expense.start`). Identical results across
-genuinely different inputs is the single most reliable tell this project has.
+The five tax bugs above came a fourth way, and it *is* automatable: work a
+published worked example through the code, then move one input until the
+example stops covering it. gov.uk's own examples passed — every one of the five
+lives in an edge the examples do not reach (income below the personal
+allowance, an allowance straddling a band edge, a second disposal in one year).
+The tests added alongside now pin the examples *and* the edges; see §6.4.
+
+Three times now, a knob that changed nothing has shown up as **two arms
+agreeing to the pound** (`death_ages`, then `Expense.start`, then the state
+pension defined in three places). Identical results across genuinely different
+inputs is the single most reliable tell this project has — and the third case
+says to apply it to your *own* edits: a fix that changes no number has not
+necessarily been proven harmless, it may simply not be wired to anything.
 
 ---
 
@@ -928,14 +944,43 @@ mechanism.
     so nothing should hard-depend on the file existing. Run
     `tools/validate_market_data.py` by hand after regenerating it.
 
-### 6.4 What this does and doesn't establish
+### 6.4 GIA taxation, checked against gov.uk's worked examples
+
+Checked 11 August 2026 against `gov.uk/tax-on-dividends` and
+`gov.uk/capital-gains-tax/rates`, both of which publish a full worked example
+with figures.
+
+* **Both examples now reproduce to the penny** and are pinned as tests
+  (`TestCapitalGainsTax.test_matches_the_govuk_worked_example`,
+  `TestDividendTax.test_matches_the_govuk_worked_example`). The CGT one always
+  did; the dividend one only after the April 2026 rate rise was applied.
+* **Neither example exercises the cases that were wrong**, which is the point
+  worth remembering. Both use a taxpayer whose income comfortably exceeds the
+  personal allowance and whose gain or dividend sits inside one band. Five
+  defects (§4) lived outside that envelope. A published example validates a
+  method; it does not bound it.
+* **Still not right: dividends do not taper the personal allowance.** They
+  count towards adjusted net income in reality, so dividends taking total
+  income above £100,000 withdraw the allowance at £1 per £2 and cost more than
+  the flat upper rate the engine charges. Documented on `dividend_tax`.
+  Under-taxes high-income households; irrelevant below £100,000, which is
+  where this engine's households mostly sit. Fixing it means feeding dividends
+  back into the income tax computation rather than stacking them on top of it.
+* **Also still approximate:** GIA dividends are stacked on income compiled
+  *before* the year's pension drawdown is known (`_accrue_gia_dividends`), and
+  the realised gain does not raise the income used to pick the CGT rate.
+
+### 6.5 What this does and doesn't establish
 
 A match against Bengen/Trinity is evidence the cashflow, allocation and
 withdrawal machinery do what a rolling historical SWR study expects. A
 formula-level match against Monevator's own arithmetic, plus a real,
 attributable disagreement in the fuller picture, is evidence the care/means-test
 module is implemented correctly *and* applies it more rigorously than a
-well-regarded published source did. Neither validates the UK income-tax,
-IHT, mortality or drawdown-ordering machinery (§1 covers those), and neither
-should be re-run and reported as a fresh number without re-checking the
-published figures haven't themselves been revised.
+well-regarded published source did. §6.4 establishes that GIA dividend and CGT
+arithmetic matches HMRC's published method, including at three edges HMRC's own
+examples do not reach. None of the three validates the IHT, mortality or
+drawdown-ordering machinery (§1 covers those), and none should be re-run and
+reported as a fresh number without re-checking the published figures haven't
+themselves been revised — §6.4 exists because a shipped rate had gone stale
+while the docstring argued it could not have.

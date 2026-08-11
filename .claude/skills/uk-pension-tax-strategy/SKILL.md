@@ -33,7 +33,9 @@ script. The tables here are reference points, not a template for mental maths.
 | CGT annual exempt amount | £3,000 |
 | CGT rate (shares, since 30 Oct 2024) | 18% basic, 24% higher — no separate "shares" rate |
 | Dividend allowance | £500 |
-| Dividend tax rate | 8.75% basic, 33.75% higher, 39.35% additional |
+| Dividend tax rate | 10.75% basic, 35.75% higher (both +2pp from 6 Apr 2026), 39.35% additional |
+| Dividends vs the personal allowance | Dividends are income: unused personal allowance covers them. The £500 allowance is a 0% *band*, so it uses up basic-rate room |
+| CGT band | Gains stack on income *after* the personal allowance, against the £37,700 band. The allowance is not available against gains; leaving it unused does not widen the band |
 | IHT nil-rate band | £325,000, transferable between spouses |
 | Residence nil-rate band | £175,000, transferable, **tapered £1 per £2 above £2m** |
 | IHT rate | 40% |

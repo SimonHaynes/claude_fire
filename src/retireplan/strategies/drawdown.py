@@ -68,6 +68,12 @@ class DrawdownContext:
     here, so the two share one real cap regardless of which mode a
     household actually uses."""
 
+    cgt_exempt_used: dict[str, float] = field(default_factory=dict)
+    """Mutable, shared for the whole plan-year across every mechanism that can
+    realise a gain for someone -- GIA drawdown here and the Bed-and-ISA sweep
+    in `cashflow.py`. One counter per person, reset fresh each year, so the
+    single real £3,000 exemption cannot be claimed twice over."""
+
     crystallised: dict[str, float] = field(default_factory=dict)
     """Mutable, whole-plan: how much of each person's DC pension has already
     moved into drawdown. The pot minus this is uncrystallised.
@@ -84,15 +90,17 @@ class DrawdownContext:
 
         `WithdrawalContext.shortfall_for` probes spending levels by resolving
         against a *copied* portfolio, but a strategy also consumes Lump Sum
-        Allowance, ISA headroom and crystallisation state as it goes. Sharing
-        those with the real run let a rejected probe permanently spend
-        allowance nobody ever received -- and `VariablePercentage` probes
-        inside a bisection loop, so it spent it many times per year.
+        Allowance, ISA headroom, the CGT exempt amount and crystallisation
+        state as it goes. Sharing those with the real run let a rejected probe
+        permanently spend allowance nobody ever received -- and
+        `VariablePercentage` probes inside a bisection loop, so it spent it
+        many times per year.
         """
         return dataclasses.replace(
             self,
             isa_headroom_used=dict(self.isa_headroom_used),
             tax_free_cash_used=dict(self.tax_free_cash_used),
+            cgt_exempt_used=dict(self.cgt_exempt_used),
             crystallised=dict(self.crystallised),
         )
 
@@ -243,6 +251,25 @@ def credit_isa(
     return remainder
 
 
+def charge_cgt(
+    gain: float, person: str, other_taxable_income: float,
+    tax: TaxSystem, cgt_exempt_used: dict[str, float],
+) -> float:
+    """CGT on `gain`, spending `person`'s annual exempt amount as it goes.
+
+    The exemption is annual and per person, but two mechanisms can realise a
+    gain for the same person in one year -- GIA drawdown here, and the
+    end-of-year Bed-and-ISA sweep in `cashflow.py`. Going through one ledger
+    is what stops each of them assuming the full £3,000 is still untouched.
+    """
+    used = cgt_exempt_used.get(person, 0.0)
+    cgt = tax.capital_gains_tax(gain, other_taxable_income, used)
+    cgt_exempt_used[person] = used + min(
+        gain, max(0.0, tax.cgt_annual_exempt_amount - used)
+    )
+    return cgt
+
+
 class DrawdownStrategy(ABC):
     def reset(self) -> None:
         """Clear per-run state. Called once at the start of every trial."""
@@ -316,10 +343,13 @@ def _draw_isa_gia_then_pensions(
                 continue
             already = taxable_income.get(person, 0.0)
             basis_fraction = portfolio.basis_fraction_of(slots)
-            wanted_gross = ctx.tax.gia_gross_for_net(already, basis_fraction, need)
+            exempt_used = ctx.cgt_exempt_used.get(person, 0.0)
+            wanted_gross = ctx.tax.gia_gross_for_net(
+                already, basis_fraction, need, exempt_used
+            )
             gross = min(wanted_gross, available)
             gain = gross * (1.0 - basis_fraction)
-            cgt = ctx.tax.capital_gains_tax(gain, already)
+            cgt = charge_cgt(gain, person, already, ctx.tax, ctx.cgt_exempt_used)
             portfolio.draw_pro_rata(slots, gross)
             result.gia_withdrawn += gross
             result.cgt_paid += cgt

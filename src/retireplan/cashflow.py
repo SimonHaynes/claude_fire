@@ -18,7 +18,9 @@ from .market import YearReturns
 from .model import PensionAccess
 from .plan import Plan, PlanYear, SlotMaps
 from .portfolio import Portfolio
-from .strategies import DrawdownContext, WithdrawalContext, credit_isa, isa_recipients
+from .strategies import (
+    DrawdownContext, WithdrawalContext, charge_cgt, credit_isa, isa_recipients,
+)
 from .tax import TaxSystem
 
 
@@ -242,6 +244,7 @@ class _Accounts:
     uncrystallised funds carry a further tax-free entitlement, so this decides
     what a UFPLS may draw on and what a further crystallisation can relieve."""
     isa_headroom_used: dict[str, float] = field(default_factory=dict)
+    cgt_exempt_used: dict[str, float] = field(default_factory=dict)
 
     def uncrystallised(self, person: str) -> float:
         dc = self.slots.dc_slots_by_person.get(person, ())
@@ -304,10 +307,16 @@ class _Accounts:
             return 0.0
         already = taxable_income.get(person, 0.0)
         basis_fraction = self.portfolio.basis_fraction_of(gia_slots)
-        gross = min(self.tax.gia_gross_for_net(already, basis_fraction, headroom), available)
+        exempt_used = self.cgt_exempt_used.get(person, 0.0)
+        gross = min(
+            self.tax.gia_gross_for_net(already, basis_fraction, headroom, exempt_used),
+            available,
+        )
         if gross <= 0:
             return 0.0
-        cgt = self.tax.capital_gains_tax(gross * (1.0 - basis_fraction), already)
+        cgt = charge_cgt(
+            gross * (1.0 - basis_fraction), person, already, self.tax, self.cgt_exempt_used,
+        )
         self.portfolio.draw_pro_rata(gia_slots, gross)
         credit_isa(
             gross - cgt, person, self.slots.isa_slots_by_person, self.tax,
@@ -665,6 +674,7 @@ def project(
             growth_return=growth_return,
             bond_return=bond_return,
             isa_headroom_used=accounts.isa_headroom_used,
+            cgt_exempt_used=accounts.cgt_exempt_used,
             pension_access=scenario.pension_access,
             tax_free_cash_used=tax_free_cash_taken,
             crystallised=crystallised,

@@ -17,6 +17,7 @@ from enum import Enum
 
 from .market import FixedReal, ReturnModel
 from .mortality import FixedAge, MortalityModel
+from .tax.uk import FULL_STATE_PENSION_ANNUAL
 
 
 class Frequency(str, Enum):
@@ -335,7 +336,7 @@ class FiscalDrag:
 class Assumptions:
     life_expectancy_age: int = 95
     state_pension_age: int = 68
-    state_pension_annual: float = 11_973.0
+    state_pension_annual: float = FULL_STATE_PENSION_ANNUAL
     risk_tolerance: str = "medium"
     fiscal_drag: FiscalDrag = field(default_factory=FiscalDrag)
 

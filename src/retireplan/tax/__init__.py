@@ -201,10 +201,16 @@ class TaxSystem(Protocol):
         net-income target."""
         ...
 
-    def capital_gains_tax(self, gain: float, other_taxable_income: float = 0.0) -> float: ...
+    def capital_gains_tax(self, gain: float, other_taxable_income: float = 0.0,
+                          exempt_used: float = 0.0) -> float:
+        """CGT on `gain`, net of whatever annual exempt amount `exempt_used`
+        leaves. The exemption is annual and per person, so a caller realising
+        gains twice in one year must pass what the first disposal used."""
+        ...
 
     def dividend_tax(self, dividends: float, other_taxable_income: float = 0.0) -> float: ...
 
-    def gia_gross_for_net(self, other_taxable_income: float, basis_fraction: float, target_net: float) -> float:
+    def gia_gross_for_net(self, other_taxable_income: float, basis_fraction: float,
+                          target_net: float, exempt_used: float = 0.0) -> float:
         """Gross GIA proceeds needed to net `target_net` after CGT on the gain portion."""
         ...

@@ -19,6 +19,7 @@ from .drawdown import (
     StandardOrder,
     TaxEfficientOrder,
     ThreeBucketStrategy,
+    charge_cgt,
     credit_isa,
     isa_recipients,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "VPW",
     "VanguardDynamicSpending",
     "VariablePercentage",
+    "charge_cgt",
     "credit_isa",
     "isa_recipients",
     "WithdrawalContext",

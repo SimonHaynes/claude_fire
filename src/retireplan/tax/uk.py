@@ -1,12 +1,13 @@
 """UK income tax, NI, CGT, dividend tax and pension access rules. IHT lives in
 `tax/iht.py`; self-employed Class 2/4 NI is not modelled.
 
-VERIFY BEFORE USE. The income tax, NI, CGT and dividend thresholds were entered
-for 2025/26 and are frozen under current policy through 2027/28, so they remain
-the correct 2026/27 figures — but a freeze is a policy choice, not a law of
-nature. `FULL_STATE_PENSION_ANNUAL` is *not* frozen: it rises each April under
-the triple lock and has not been re-verified past 2025/26, so treat any figure
-derived from it as a lower bound until it is checked.
+VERIFY BEFORE USE. The income tax, NI and CGT *thresholds* are frozen under
+current policy through 2027/28, so a 2025/26 figure is still the right 2026/27
+one — but a freeze binds only what it names. It says nothing about rates, and
+nothing about a figure with its own uprating mechanism: the dividend rates rose
+2pp in April 2026 and the state pension rises every April under the triple lock,
+both while the thresholds around them stood still. Check each constant against
+its own timetable, not against the freeze.
 """
 from __future__ import annotations
 
@@ -39,7 +40,8 @@ UK_NATIONAL_INSURANCE_2025_26 = RateSchedule((
     Band(INF, 0.02),
 ))
 
-FULL_STATE_PENSION_ANNUAL = 11_973.0
+# 2026/27: £241.30 a week, the 2025/26 figure uprated 4.8% by the triple lock.
+FULL_STATE_PENSION_ANNUAL = 12_547.60
 
 # Normal Minimum Pension Age. 57 even for earlier modelled dates: the rise from
 # 55 is legislated for 6 April 2028, and any plan written today will be lived
@@ -59,11 +61,13 @@ CGT_ANNUAL_EXEMPT_AMOUNT = 3_000.0
 CGT_BASIC_RATE = 0.18
 CGT_HIGHER_RATE = 0.24
 
-# The dividend allowance, like the CGT exempt amount, does not stack with the
-# income personal allowance.
+# The ordinary and upper rates rose 2pp on 6 April 2026; the additional rate did
+# not. Unlike the CGT exempt amount the dividend allowance is a nil-rate *band*,
+# not a deduction: it is charged at 0% but still occupies band space, so it can
+# push later dividends up a band rather than removing £500 from tax outright.
 DIVIDEND_ALLOWANCE = 500.0
-DIVIDEND_BASIC_RATE = 0.0875
-DIVIDEND_HIGHER_RATE = 0.3375
+DIVIDEND_BASIC_RATE = 0.1075
+DIVIDEND_HIGHER_RATE = 0.3575
 DIVIDEND_ADDITIONAL_RATE = 0.3935
 
 # Assumed distribution yield on a global tracker held in a GIA, taxed yearly as
@@ -145,54 +149,83 @@ class UKTaxSystem:
         """Pension drawdown is subject to income tax but not NI."""
         return self.income_tax_schedule.gross_for_net(other_taxable_income, target_net)
 
-    def _stacked_tax(self, amount: float, other_taxable_income: float,
-                      allowance: float, bands: tuple[tuple[float, float], ...]) -> float:
-        """Tax `amount` (a dividend or a gain) stacked on top of income tax's
-        bands, but with its own flat allowance rather than the income
-        personal allowance. `bands` is `((upper, rate), ...)`, `upper` in
-        INF-terminated ascending order, positions measured against total
-        income (existing + this amount) exactly like `RateSchedule.tax`."""
-        taxable = max(0.0, amount - allowance)
-        if taxable <= 0:
-            return 0.0
+    def _tax_stacked_on(self, amount: float, position: float,
+                        bands: tuple[tuple[float, float], ...]) -> float:
+        """Tax `amount` occupying the range `position` to `position + amount`.
+        `bands` is `((upper, rate), ...)`, INF-terminated ascending, positions
+        measured against total income exactly like `RateSchedule.tax`."""
         total = 0.0
-        lower = other_taxable_income
-        remaining = taxable
+        remaining = amount
         for upper, rate in bands:
             if remaining <= 0:
                 break
-            width = upper - lower
+            width = upper - position
             if width <= 0:
                 continue
             taken = min(remaining, width)
             total += taken * rate
             remaining -= taken
-            lower += taken
+            position += taken
         return total
 
-    def capital_gains_tax(self, gain: float, other_taxable_income: float = 0.0) -> float:
+    def cgt_basic_rate_room(self, other_taxable_income: float) -> float:
+        """How much gain is charged at the basic rate before the higher one.
+
+        Gains stack on *taxable* income -- income after the personal
+        allowance -- so income below the allowance uses none of the basic-rate
+        band. The allowance itself is not available against gains, but nor
+        does leaving it unused shrink the band, which is why this floors the
+        income at the allowance rather than subtracting it.
+        """
+        personal_allowance = self.income_tax_schedule.bands[0].upper
+        basic_upper = self.income_tax_schedule.bands[1].upper
+        return max(0.0, basic_upper - max(other_taxable_income, personal_allowance))
+
+    def capital_gains_tax(self, gain: float, other_taxable_income: float = 0.0,
+                          exempt_used: float = 0.0) -> float:
         """CGT on `gain`, given `other_taxable_income` already occupies the
-        income tax bands (only the *rate* on the gain depends on that; the
-        annual exempt amount is a flat allowance on the gain itself)."""
-        return self._stacked_tax(
-            gain, other_taxable_income, self.cgt_annual_exempt_amount,
-            ((self.income_tax_schedule.bands[1].upper, self.cgt_basic_rate), (INF, self.cgt_higher_rate)),
-        )
+        income tax bands and `exempt_used` of this year's annual exempt amount
+        has already been consumed by an earlier disposal.
+
+        The exempt amount is a deduction from the gain, not a nil-rate band:
+        unlike the dividend allowance it does not occupy basic-rate space.
+        """
+        exempt = max(0.0, self.cgt_annual_exempt_amount - exempt_used)
+        taxable = max(0.0, gain - exempt)
+        if taxable <= 0:
+            return 0.0
+        at_basic = min(taxable, self.cgt_basic_rate_room(other_taxable_income))
+        return at_basic * self.cgt_basic_rate + (taxable - at_basic) * self.cgt_higher_rate
 
     def dividend_tax(self, dividends: float, other_taxable_income: float = 0.0) -> float:
-        """Dividend tax on `dividends`, stacked the same way as `capital_gains_tax`."""
-        basic_upper = self.income_tax_schedule.bands[1].upper
-        additional_upper = self.income_tax_schedule.bands[3].upper
-        return self._stacked_tax(
-            dividends, other_taxable_income, self.dividend_allowance,
+        """Dividend tax on `dividends` as the top slice of income.
+
+        Dividends *are* income, so whatever personal allowance
+        `other_taxable_income` has not used covers them first -- a retiree
+        living on less than the allowance pays nothing on them. The dividend
+        allowance then sits directly above at 0%, occupying band space rather
+        than being deducted, so it can push later dividends up a band.
+
+        Dividends do not taper the personal allowance here, though in reality
+        they count towards adjusted net income: above £100,000 this
+        understates the charge.
+        """
+        if dividends <= 0:
+            return 0.0
+        schedule = self.income_tax_schedule
+        allowance_left = max(0.0, schedule.bands[0].upper - other_taxable_income)
+        relieved = min(dividends, allowance_left + self.dividend_allowance)
+        return self._tax_stacked_on(
+            dividends - relieved, other_taxable_income + relieved,
             (
-                (basic_upper, self.dividend_basic_rate),
-                (additional_upper, self.dividend_higher_rate),
+                (schedule.bands[1].upper, self.dividend_basic_rate),
+                (schedule.bands[3].upper, self.dividend_higher_rate),
                 (INF, self.dividend_additional_rate),
             ),
         )
 
-    def gia_gross_for_net(self, other_taxable_income: float, basis_fraction: float, target_net: float) -> float:
+    def gia_gross_for_net(self, other_taxable_income: float, basis_fraction: float,
+                          target_net: float, exempt_used: float = 0.0) -> float:
         """Gross GIA proceeds needed to net `target_net` after CGT.
 
         Only the gain portion of what's sold (`1 - basis_fraction`) is a
@@ -200,6 +233,9 @@ class UKTaxSystem:
         `basis_fraction` is the fraction of the slot's current value that is
         cost basis, assumed constant across a pro-rata sale (the fraction
         does not change as more of the *same* holding is sold).
+        `exempt_used` is this year's annual exempt amount already spent by an
+        earlier disposal, so the inverse of `capital_gains_tax` stays its
+        inverse when a person sells twice in one year.
         """
         if target_net <= 0:
             return 0.0
@@ -207,11 +243,10 @@ class UKTaxSystem:
         if gain_fraction <= 0:
             return target_net  # no gain at all: £1 sold nets £1
 
-        basic_upper = self.income_tax_schedule.bands[1].upper
-        exempt = self.cgt_annual_exempt_amount
+        exempt = max(0.0, self.cgt_annual_exempt_amount - exempt_used)
         breakpoints = (
             (exempt, 0.0),
-            (exempt + max(0.0, basic_upper - other_taxable_income), self.cgt_basic_rate),
+            (exempt + self.cgt_basic_rate_room(other_taxable_income), self.cgt_basic_rate),
             (INF, self.cgt_higher_rate),
         )
         gross = 0.0

@@ -612,3 +612,47 @@ class TestShortfallTolerance:
         from retireplan.strategies.drawdown import SHORTFALL_TOLERANCE
 
         assert 0 < SHORTFALL_TOLERANCE <= 0.01
+
+
+class TestSharedCGTExemption:
+    """The £3,000 annual exempt amount is per person per *year*, but two
+    mechanisms realise gains for the same person in one year -- GIA drawdown
+    inside a strategy, and the end-of-year Bed-and-ISA sweep in `cashflow.py`.
+    Each once claimed a fresh exemption, so a household running both got two.
+    """
+
+    def test_two_disposals_in_one_year_share_one_exemption(self):
+        from retireplan.strategies.drawdown import charge_cgt
+        from retireplan.tax.uk import UK
+
+        used: dict[str, float] = {}
+        first = charge_cgt(10_000, "A", 30_000, UK, used)
+        second = charge_cgt(10_000, "A", 30_000, UK, used)
+        assert first + second == pytest.approx(UK.capital_gains_tax(20_000, 30_000))
+
+    def test_the_exemption_is_still_per_person(self):
+        from retireplan.strategies.drawdown import charge_cgt
+        from retireplan.tax.uk import UK
+
+        used: dict[str, float] = {}
+        charge_cgt(10_000, "A", 30_000, UK, used)
+        assert charge_cgt(10_000, "B", 30_000, UK, used) == pytest.approx(
+            UK.capital_gains_tax(10_000, 30_000)
+        )
+
+    def test_a_gain_smaller_than_the_exemption_only_spends_what_it_uses(self):
+        from retireplan.strategies.drawdown import charge_cgt
+        from retireplan.tax.uk import UK
+
+        used: dict[str, float] = {}
+        assert charge_cgt(1_000, "A", 30_000, UK, used) == 0.0
+        assert used["A"] == pytest.approx(1_000)
+        assert charge_cgt(5_000, "A", 30_000, UK, used) == pytest.approx(3_000 * 0.18)
+
+    def test_a_dry_run_probe_does_not_spend_it(self):
+        from retireplan.strategies.drawdown import charge_cgt
+        from retireplan.tax.uk import UK
+
+        ctx = TestShortfallTolerance()._ctx(UK, cgt_exempt_used={})
+        charge_cgt(10_000, "A", 30_000, UK, ctx.for_dry_run().cgt_exempt_used)
+        assert ctx.cgt_exempt_used == {}

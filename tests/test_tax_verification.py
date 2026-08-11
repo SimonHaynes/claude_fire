@@ -67,3 +67,25 @@ class TestStaleTaxRules:
         # that is the point of the test, not a reason to move the date.
         with no_staleness_warning():
             warn_if_tax_rules_stale(UK, UK_IHT, as_of=UK.verified_on)
+
+
+class TestOneDefinitionPerFigure:
+    """The state pension was defined three times -- in `tax/uk.py`, on
+    `Assumptions`, and again as a `serde` fallback. Only the second was read by
+    the projection, so uprating the first moved nothing and the sample client's
+    success probabilities were identical to four decimal places.
+    """
+
+    def test_the_assumptions_default_is_the_tax_modules_figure(self):
+        from retireplan.model import Assumptions
+        from retireplan.tax.uk import FULL_STATE_PENSION_ANNUAL
+
+        assert Assumptions().state_pension_annual == FULL_STATE_PENSION_ANNUAL
+
+    def test_deserialising_an_absent_figure_agrees_with_the_default(self):
+        from retireplan.model import Assumptions
+        from retireplan.serde import _assumptions_from_dict
+
+        assert _assumptions_from_dict({}).state_pension_annual == (
+            Assumptions().state_pension_annual
+        )

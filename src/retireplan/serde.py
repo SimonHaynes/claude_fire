@@ -232,10 +232,12 @@ def _assumptions_from_dict(raw: dict[str, Any]) -> Assumptions:
     drag = raw.get("fiscal_drag", {})
     defaults = FiscalDrag()
     return Assumptions(
-        life_expectancy_age=raw.get("life_expectancy_age", 95),
-        state_pension_age=raw.get("state_pension_age", 68),
-        state_pension_annual=raw.get("state_pension_annual", 11_973.0),
-        risk_tolerance=raw.get("risk_tolerance", "medium"),
+        # Defaults read off the dataclass, never restated: a second copy of
+        # the state pension here went stale while the first was uprated.
+        life_expectancy_age=raw.get("life_expectancy_age", Assumptions.life_expectancy_age),
+        state_pension_age=raw.get("state_pension_age", Assumptions.state_pension_age),
+        state_pension_annual=raw.get("state_pension_annual", Assumptions.state_pension_annual),
+        risk_tolerance=raw.get("risk_tolerance", Assumptions.risk_tolerance),
         mortality=(
             model_from_spec(raw["mortality"]) if raw.get("mortality") else FixedAge()
         ),

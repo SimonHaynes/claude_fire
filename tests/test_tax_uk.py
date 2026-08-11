@@ -117,6 +117,12 @@ def test_pension_access_age_reflects_the_2028_rise():
 
 
 class TestCapitalGainsTax:
+    def test_matches_the_govuk_worked_example(self):
+        """gov.uk/capital-gains-tax/rates: taxable income £20,000 and gains of
+        £12,600. Less the £3,000 exemption, £9,600 added to £20,000 is £29,600,
+        inside the £37,700 basic-rate band, so all of it is charged at 18%."""
+        assert UK.capital_gains_tax(12_600, 20_000 + 12_570) == pytest.approx(1_728.0)
+
     def test_annual_exempt_amount_is_flat_not_stacked_with_the_personal_allowance(self):
         """The £3,000 CGT exemption applies to the gain itself -- someone with
         £80,000 of other income still gets it in full."""
@@ -135,18 +141,65 @@ class TestCapitalGainsTax:
         at_higher = taxable - at_basic
         assert UK.capital_gains_tax(gain, other) == pytest.approx(at_basic * 0.18 + at_higher * 0.24)
 
+    def test_income_below_the_personal_allowance_leaves_the_band_intact_not_wider(self):
+        """The personal allowance is not available against gains, but leaving
+        it unused does not shrink the basic-rate band either: a retiree with no
+        income gets £37,700 of 18% room, not £50,270 of it."""
+        taxable = 60_000 - 3_000
+        expected = 37_700 * 0.18 + (taxable - 37_700) * 0.24
+        assert UK.capital_gains_tax(60_000, 0) == pytest.approx(expected)
+        assert UK.capital_gains_tax(60_000, 5_000) == pytest.approx(expected)
+        # Once income covers the allowance, every extra pound of it does eat
+        # into the band.
+        assert UK.capital_gains_tax(60_000, 22_570) == pytest.approx(
+            27_700 * 0.18 + (taxable - 27_700) * 0.24
+        )
+
+    def test_a_second_disposal_does_not_get_a_second_exemption(self):
+        assert UK.capital_gains_tax(10_000, 30_000, exempt_used=3_000) == pytest.approx(
+            10_000 * 0.18
+        )
+        split = UK.capital_gains_tax(10_000, 30_000) + UK.capital_gains_tax(
+            10_000, 30_000, exempt_used=3_000
+        )
+        assert split == pytest.approx(UK.capital_gains_tax(20_000, 30_000))
+
     def test_no_gain_no_tax(self):
         assert UK.capital_gains_tax(0, 50_000) == 0.0
 
 
 class TestDividendTax:
+    def test_matches_the_govuk_worked_example(self):
+        """gov.uk/tax-on-dividends: £29,570 of wages and £3,000 of dividends --
+        no tax on £500 of it, 10.75% on the remaining £2,500."""
+        assert UK.dividend_tax(3_000, 29_570) == pytest.approx(2_500 * 0.1075)
+
     def test_allowance_is_flat(self):
         assert UK.dividend_tax(500, 80_000) == 0.0
 
     def test_three_bands(self):
-        assert UK.dividend_tax(5_000, 0) == pytest.approx((5_000 - 500) * 0.0875)
-        assert UK.dividend_tax(5_000, 60_000) == pytest.approx((5_000 - 500) * 0.3375)
+        assert UK.dividend_tax(5_000, 60_000) == pytest.approx((5_000 - 500) * 0.3575)
         assert UK.dividend_tax(5_000, 130_000) == pytest.approx((5_000 - 500) * 0.3935)
+
+    def test_unused_personal_allowance_covers_dividends(self):
+        """Dividends are income: a retiree living on less than the personal
+        allowance pays nothing on them, and the allowance is not wasted."""
+        assert UK.dividend_tax(5_000, 0) == 0.0
+        assert UK.dividend_tax(12_570, 0) == 0.0
+        # £5,000 of other income leaves £7,570 of allowance, then £500 at 0%.
+        assert UK.dividend_tax(10_000, 5_000) == pytest.approx(
+            (10_000 - 7_570 - 500) * 0.1075
+        )
+
+    def test_the_allowance_occupies_band_space_rather_than_being_deducted(self):
+        """Unlike the CGT exemption the £500 is charged at 0% but still uses up
+        basic-rate room, so it can push later dividends into the higher rate
+        instead of taking £500 out of charge."""
+        other = 48_000
+        at_basic = 50_270 - other - 500
+        assert UK.dividend_tax(3_000, other) == pytest.approx(
+            at_basic * 0.1075 + (3_000 - 500 - at_basic) * 0.3575
+        )
 
 
 class TestGiaGrossForNet:
