@@ -44,8 +44,8 @@ def couple(**assumption_overrides) -> Household:
     """Two people, both retired, both on a State Pension, one with a DB pension."""
     return Household(
         people=[
-            Person("Alex", date(1950, 1, 1), full_state_pension=True),
-            Person("Sam", date(1950, 1, 1), full_state_pension=True),
+            Person("Alex", date(1950, 1, 1)),
+            Person("Sam", date(1950, 1, 1)),
         ],
         expenses=[
             Expense("Essentials", 20_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL),

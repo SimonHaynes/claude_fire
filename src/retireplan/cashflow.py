@@ -614,7 +614,7 @@ def project(
         dividend_tax_paid = _accrue_gia_dividends(accounts, year)
         _grow_balances(accounts, scenario.allocation, market, year, rng)
         _settle_maturities(accounts, year)
-        for slot, amount in year.contributions:
+        for _owner, slot, amount in year.contributions:
             portfolio.balances[slot] += amount
         for person, lump in year.lump_sums_by_person.items():
             accounts.invest_for(person, lump)

@@ -17,7 +17,13 @@ from enum import Enum
 
 from .market import FixedReal, ReturnModel
 from .mortality import FixedAge, MortalityModel
-from .tax.uk import FULL_STATE_PENSION_ANNUAL
+from .tax.uk import (
+    ANNUAL_ALLOWANCE,
+    FULL_STATE_PENSION_ANNUAL,
+    NON_EARNER_RELIEVABLE_GROSS,
+    RELIEF_AT_SOURCE_RATE,
+    STATE_PENSION_QUALIFYING_YEARS,
+)
 
 
 class Frequency(str, Enum):
@@ -98,7 +104,16 @@ class PensionAccess(str, Enum):
 class Person:
     name: str
     date_of_birth: date
-    full_state_pension: bool = True
+    state_pension_qualifying_years: int = STATE_PENSION_QUALIFYING_YEARS
+    """Years on this person's NI record, from a gov.uk State Pension forecast.
+
+    A count rather than a flag because the shortfall is itself a planning
+    lever: voluntary Class 3 contributions buy a missing year back for about
+    three years' worth of the pension it pays for life, and the person short
+    of years is usually the one who took time out to raise children. Never
+    guess it -- HMRC's record is the only source and it routinely surprises
+    people. `tax.uk.UKTaxSystem.class_3_payback_years` prices the buy-back.
+    """
     sex: str | None = None
     """"male" or "female", for mortality rates only.
 
@@ -176,11 +191,16 @@ class Debt:
 
 @dataclass(frozen=True)
 class Contribution:
-    """Ongoing pension contributions, paid only while the owner is working.
+    """Payroll contributions, paid only while the owner is working.
 
     `employee_monthly` is treated as salary sacrifice: it reduces both taxable
     pay and NI-able pay. `employer_monthly` was never the employee's salary,
     so it simply lands in the pot.
+
+    Use `ReliefAtSource` instead for anything paid out of a bank account rather
+    than deducted from pay -- a personal SIPP, or money paid in for someone
+    else. Sacrifice beats relief at source for anyone with the choice, because
+    it relieves NI as well as income tax.
     """
 
     employee_monthly: float = 0.0
@@ -197,6 +217,40 @@ class Contribution:
     Bounded by the salary's own window either way: a `Contribution.end`
     after the salary stops (or after retirement, if it `stops_at_retirement`)
     has no further effect once the salary itself is gone."""
+
+
+@dataclass(frozen=True)
+class ReliefAtSource:
+    """A pension contribution paid from taxed money, grossed up by the scheme.
+
+    `net_annual` is what leaves a bank account; the pot receives it grossed up
+    at the basic rate, so £2,880 buys £3,600. **Relief follows the member's own
+    tax status and relevant earnings, never the payer's**, so one partner can
+    fund the other's pension and the relief is still the member's. That is what
+    makes a non-earning partner worth funding: they have no income to relieve
+    and the scheme reclaims 20% regardless.
+
+    Not tied to a salary, unlike `Contribution`, so it carries on after the
+    member stops working -- until relief ends at 75, which `compile_plan`
+    enforces. The engine caps each year's gross at the higher of the flat
+    non-earner limit and that year's relevant earnings, and at the Annual
+    Allowance; `Household.validate` rejects a stated amount that already
+    breaches those at outset, so the runtime cap only ever bites as the flat
+    limit erodes in real terms.
+
+    Higher-rate relief is **not** modelled. A member paying 40% reclaims a
+    further 20% through self-assessment, as cash rather than into the pot, so
+    every plan here understates the return on their contributions -- an error
+    that errs against contributing.
+    """
+
+    net_annual: float = 0.0
+    start: date | None = None
+    end: date | None = None
+
+    @property
+    def gross_annual(self) -> float:
+        return self.net_annual / (1.0 - RELIEF_AT_SOURCE_RATE)
 
 
 @dataclass(frozen=True)
@@ -225,7 +279,7 @@ class Asset:
     returns: ReturnModel = field(default_factory=lambda: FixedReal(0.0))
     annual_charge_pct: float = 0.0
     flat_annual_fee: float = 0.0
-    contributions: Contribution | None = None
+    contributions: Contribution | ReliefAtSource | None = None
     maturity: Maturity | None = None
     defined_benefit: DefinedBenefit | None = None
 
@@ -234,6 +288,16 @@ class Asset:
             raise ValueError(f"DB pension {self.name!r} needs a defined_benefit")
         if self.defined_benefit is not None and self.type is not AssetType.DB_PENSION:
             raise ValueError(f"{self.name!r} has defined_benefit but is not a DB_PENSION")
+        if isinstance(self.contributions, ReliefAtSource) and self.type is not AssetType.DC_PENSION:
+            raise ValueError(
+                f"{self.name!r} takes relief at source but is not a DC_PENSION — "
+                "only a pension is grossed up"
+            )
+        if self.owner == "joint" and self.contributions is not None:
+            raise ValueError(
+                f"{self.name!r} takes contributions but is jointly owned — "
+                "relief and the allowances that cap it belong to one person"
+            )
 
 
 @dataclass
@@ -400,6 +464,56 @@ class Household:
     def assets_of(self, *types: AssetType) -> list[Asset]:
         return [a for a in self.assets if a.type in types]
 
+    def relevant_earnings(self, name: str) -> float:
+        """Earnings that pension tax relief can be claimed against.
+
+        Employment income only. Pension, rental and investment income are not
+        relevant earnings however large, which is the whole reason a retired
+        or non-earning person is stuck with the flat non-earner limit.
+        """
+        return sum(
+            income.amount * (12 if income.frequency is Frequency.MONTHLY else 1)
+            for income in self.incomes
+            if income.owner == name and income.type is IncomeType.SALARY
+        )
+
+    def _relief_problems(self) -> list[str]:
+        """Contributions stated at outset that no relief would be given on.
+
+        Checked against today's figures, not each future year's: the limits
+        erode in real terms under `FiscalDrag`, and a plan that starts inside
+        them and drifts out is a modelling fact the engine caps at runtime,
+        not an authoring mistake worth refusing to compile.
+        """
+        problems: list[str] = []
+        paid_in: dict[str, float] = {}
+        for asset in self.assets:
+            if asset.type is not AssetType.DC_PENSION or asset.contributions is None:
+                continue
+            if isinstance(asset.contributions, ReliefAtSource):
+                gross = asset.contributions.gross_annual
+                ceiling = max(NON_EARNER_RELIEVABLE_GROSS, self.relevant_earnings(asset.owner))
+                if gross > ceiling + 0.01:
+                    problems.append(
+                        f"{asset.name!r} pays in £{gross:,.0f} gross for {asset.owner}, above "
+                        f"the £{ceiling:,.0f} they can claim relief on "
+                        f"(the higher of £{NON_EARNER_RELIEVABLE_GROSS:,.0f} and their "
+                        "relevant earnings)"
+                    )
+            else:
+                gross = (
+                    asset.contributions.employee_monthly + asset.contributions.employer_monthly
+                ) * 12
+            paid_in[asset.owner] = paid_in.get(asset.owner, 0.0) + gross
+        for owner, total in paid_in.items():
+            if total > ANNUAL_ALLOWANCE + 0.01:
+                problems.append(
+                    f"{owner} receives £{total:,.0f} of pension contributions against an "
+                    f"Annual Allowance of £{ANNUAL_ALLOWANCE:,.0f} — carry forward may cover "
+                    "it, which this engine does not model, so state the net-of-charge figure"
+                )
+        return problems
+
     def validate(self) -> None:
         """Catch the mistakes that would otherwise surface as silent zeroes."""
         names = {p.name for p in self.people}
@@ -419,5 +533,12 @@ class Household:
                         f"asset {asset.name!r} rolls over into unknown asset "
                         f"{asset.maturity.rollover_to!r}"
                     )
+        for person in self.people:
+            if not 0 <= person.state_pension_qualifying_years <= 50:
+                problems.append(
+                    f"{person.name} has {person.state_pension_qualifying_years} State "
+                    "Pension qualifying years, which is not a possible NI record"
+                )
+        problems += self._relief_problems()
         if problems:
             raise ValueError("invalid household:\n  - " + "\n  - ".join(problems))

@@ -71,7 +71,7 @@ class TestFirstYearArithmetic:
 
     def test_pension_contributions(self, plan):
         """Employee sacrifice plus employer top-up, both while still working."""
-        by_slot = dict(plan.years[0].contributions)
+        by_slot = {slot: amount for _owner, slot, amount in plan.years[0].contributions}
         pat = by_slot[plan.slot("Pat — DC Pension (Global Tracker)")]
         robin = by_slot[plan.slot("Robin — DC Pension (Global Tracker)")]
         assert pat == pytest.approx(650 * 12 + 260 * 12)

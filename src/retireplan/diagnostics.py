@@ -82,7 +82,7 @@ def _balance_at(plan: Plan, slots: tuple[int, ...], up_to: int) -> float:
     paid_in = sum(
         amount
         for year in plan.years[:up_to]
-        for slot, amount in year.contributions
+        for _owner, slot, amount in year.contributions
         if slot in wanted
     )
     return opening + paid_in

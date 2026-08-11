@@ -29,6 +29,10 @@ and hand-verified, not to explore every feature the engine has:
     flattering default.
   * State pension age (68) and life expectancy (95) are the engine's
     defaults, not stated by the notes.
+  * Pat has a full 35-year NI record; Robin is short six years, a fabricated
+    figure chosen so the fixture exercises the pro-rating and gives the
+    voluntary-NI comparison something to bite on. A real intake reads both
+    numbers off a gov.uk forecast.
 """
 from __future__ import annotations
 
@@ -61,8 +65,8 @@ ROBIN_DOB = date(1971, 8, 25)
 
 SAMPLE_CLIENT = Household(
     people=[
-        Person("Pat", PAT_DOB, full_state_pension=True),
-        Person("Robin", ROBIN_DOB, full_state_pension=True),
+        Person("Pat", PAT_DOB, state_pension_qualifying_years=35),
+        Person("Robin", ROBIN_DOB, state_pension_qualifying_years=29),
     ],
     incomes=[
         IncomeSource("Pat", IncomeType.SALARY, 78_000, Frequency.YEARLY),

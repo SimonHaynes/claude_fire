@@ -52,7 +52,7 @@ class TestHouseholdRoundTrip:
     def test_full_household_survives_a_round_trip(self):
         original = Household(
             people=[Person("Ada", date(1970, 3, 1)),
-                    Person("Bo", date(1972, 9, 1), full_state_pension=False)],
+                    Person("Bo", date(1972, 9, 1), state_pension_qualifying_years=22)],
             assets=[
                 Asset("ISA", AssetType.ISA, "Ada", 150_000,
                       returns=SampledSeries("global_equity"), annual_charge_pct=0.0014),

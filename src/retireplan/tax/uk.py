@@ -54,6 +54,32 @@ PENSION_ACCESS_AGE = 57
 PCLS_FRACTION = 0.25
 LUMP_SUM_ALLOWANCE = 268_275.0
 
+# Contributions paid from taxed money are grossed up by the scheme at the basic
+# rate whatever the member's own rate, so £2,880 net buys £3,600 of pot. Any
+# further relief a higher-rate member is owed comes back as cash through
+# self-assessment and never reaches the pot — which this engine does not model.
+RELIEF_AT_SOURCE_RATE = 0.20
+
+# Relief is capped at the higher of this and 100% of the member's relevant UK
+# earnings. Fixed in cash terms since 2001, so it has already lost more than
+# half its value; `FiscalDrag.allowance_inflation` keeps eroding it.
+NON_EARNER_RELIEVABLE_GROSS = 3_600.0
+
+ANNUAL_ALLOWANCE = 60_000.0
+MONEY_PURCHASE_ANNUAL_ALLOWANCE = 10_000.0
+
+# Relief stops at 75 — the contribution is still allowed, the tax relief is not,
+# so a contribution after it is simply a worse ISA.
+RELIEF_END_AGE = 75
+
+# Qualifying years for the full new State Pension, and the cost of buying one
+# back with a voluntary Class 3 contribution.
+STATE_PENSION_QUALIFYING_YEARS = 35
+CLASS_3_ANNUAL_COST = 923.00
+"""2025/26: £17.75 a week. **Not verified for 2026/27** — unlike the frozen
+thresholds this is uprated most years, so check it before pricing a buy-back.
+Class 2 is cheaper for the self-employed and is not modelled."""
+
 # Since the 30 Oct 2024 Budget shares carry the same two rates as residential
 # property. There is no additional-rate CGT band: which of the two applies turns
 # only on whether the taxpayer's other income already fills the basic-rate band.
@@ -95,6 +121,9 @@ class UKTaxSystem:
     pcls_fraction: float = PCLS_FRACTION
     lump_sum_allowance: float = LUMP_SUM_ALLOWANCE
     isa_annual_allowance: float = 20_000.0
+    relief_at_source_rate: float = RELIEF_AT_SOURCE_RATE
+    non_earner_relievable_gross: float = NON_EARNER_RELIEVABLE_GROSS
+    annual_allowance: float = ANNUAL_ALLOWANCE
     cgt_annual_exempt_amount: float = CGT_ANNUAL_EXEMPT_AMOUNT
     cgt_basic_rate: float = CGT_BASIC_RATE
     cgt_higher_rate: float = CGT_HIGHER_RATE
@@ -135,8 +164,27 @@ class UKTaxSystem:
             ni_schedule=self.ni_schedule.scaled(income_factor),
             lump_sum_allowance=self.lump_sum_allowance * allowance_factor,
             isa_annual_allowance=self.isa_annual_allowance * allowance_factor,
+            non_earner_relievable_gross=self.non_earner_relievable_gross * allowance_factor,
+            annual_allowance=self.annual_allowance * allowance_factor,
             cgt_annual_exempt_amount=self.cgt_annual_exempt_amount * allowance_factor,
             dividend_allowance=self.dividend_allowance * allowance_factor,
+        )
+
+    def gross_up_relief_at_source(self, net: float) -> float:
+        """What `net` pounds of taxed money buy in the pot."""
+        return net / (1.0 - self.relief_at_source_rate)
+
+    def relievable_gross(self, relevant_earnings: float) -> float:
+        """The most that can be paid into one person's pension with relief.
+
+        `relevant_earnings` is employment and self-employment income only:
+        pension, rental and investment income do not count, which is why a
+        retired member's ceiling is the flat non-earner figure however wealthy
+        they are.
+        """
+        return min(
+            self.annual_allowance,
+            max(self.non_earner_relievable_gross, relevant_earnings),
         )
 
     def income_tax(self, income: float) -> float:
@@ -329,13 +377,29 @@ class UKTaxSystem:
         tax_free = max(0.0, min(gross * self.pcls_fraction, headroom))
         return tax_free, gross - tax_free
 
-    def state_pension(self, full_record: bool = True) -> float:
-        if not full_record:
-            raise NotImplementedError(
-                "partial NI records are not pro-rated yet — set the amount explicitly "
-                "on Assumptions.state_pension_annual instead of guessing"
-            )
-        return self.full_state_pension_annual
+    def state_pension(self, qualifying_years: int = STATE_PENSION_QUALIFYING_YEARS) -> float:
+        """The new State Pension on a record of `qualifying_years`.
+
+        Straight-line between 10 years and 35; below 10 nothing is payable at
+        all, which is the cliff worth checking for anyone who spent most of
+        their career abroad.
+        """
+        if qualifying_years < 10:
+            return 0.0
+        capped = min(qualifying_years, STATE_PENSION_QUALIFYING_YEARS)
+        return self.full_state_pension_annual * capped / STATE_PENSION_QUALIFYING_YEARS
+
+    def class_3_payback_years(self, cost_per_year: float = CLASS_3_ANNUAL_COST) -> float:
+        """Years of extra State Pension needed to repay buying one back.
+
+        The uplift is `1/35` of the full rate for life, index-linked by the
+        triple lock, against a one-off cash cost -- which is why this comes out
+        at about three years and beats every other guaranteed return available
+        to a household. Payback ignores the tax the extra pension may bear:
+        a recipient already over the personal allowance repays 20% slower.
+        """
+        annual_uplift = self.full_state_pension_annual / STATE_PENSION_QUALIFYING_YEARS
+        return cost_per_year / annual_uplift
 
 
 UK = UKTaxSystem()

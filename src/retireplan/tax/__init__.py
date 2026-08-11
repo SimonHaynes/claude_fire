@@ -214,3 +214,15 @@ class TaxSystem(Protocol):
                           target_net: float, exempt_used: float = 0.0) -> float:
         """Gross GIA proceeds needed to net `target_net` after CGT on the gain portion."""
         ...
+
+    relief_at_source_rate: float
+    """Relief the scheme reclaims on a contribution paid from taxed money,
+    whatever the member's own marginal rate."""
+
+    def gross_up_relief_at_source(self, net: float) -> float:
+        """What `net` pounds of taxed money buy in the pot."""
+        ...
+
+    def relievable_gross(self, relevant_earnings: float) -> float:
+        """The most one person's pension can receive with relief this year."""
+        ...

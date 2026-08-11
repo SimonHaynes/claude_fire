@@ -39,6 +39,11 @@ their absence from `git status` is not a problem to fix.
      silently when the plan is regenerated. If the notes give a count, use
      `remaining_months` and say in the docstring that it needs re-stating —
      computing a date from a vague count just relocates the staleness.
+   - **`Contribution` is payroll, `ReliefAtSource` is a bank transfer.** A SIPP
+     paid from a current account, or money one partner pays into the other's
+     pension, is `ReliefAtSource(net_annual=...)` — state the **net** payment
+     and the engine grosses it up. Recording it as a `Contribution` would give
+     it NI relief nobody got and tie it to a salary it does not have.
    - **A client who stops contributing while still working is
      `Contribution.end`, not a scenario decision.** That is Coast FIRE:
      contribute until a date, then let the pot compound while salary, tax and NI
@@ -70,6 +75,12 @@ their absence from `git status` is not a problem to fix.
      docstring — it becomes the report's notes section.
    - Where the notes imply an answer, take the reading, say which and why, and
      invite correction rather than blocking.
+   - **Ask each person for their State Pension qualifying years**, from their
+     gov.uk forecast rather than memory. `Person.state_pension_qualifying_years`
+     defaults to a full 35, which quietly hands a State Pension to someone who
+     has not earned one; a career break, part-time years or time abroad all
+     leave gaps. The shortfall is a lever, not just a number — see
+     `uk-tax-relief-and-allowances`.
    - **Ask for `Person.sex`**, awkward as it is: a unisex assumption is roughly
      three and a half years out per person and moves every bequest figure.
      Unstated blends the two evenly. Frame it as the actuarial input it is.

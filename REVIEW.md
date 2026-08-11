@@ -190,6 +190,31 @@ drawing predominantly from one person's pension wastes part of that. It also
 ignores that the pensions are unevenly sized (Pat's is ten times Robin's),
 which is itself a planning issue.
 
+**Partly addressed from the other end.** The contribution side is now modelled:
+`ReliefAtSource` funds a pension for someone with no earnings at all, grossed up
+at the basic rate and capped at the higher of £3,600 and the member's own
+relevant earnings, so equalising the *pots* — which is worth more than
+optimising the order they are drawn in — is now expressible as a scenario. The
+drawdown-order defect stands.
+
+### 1.6a The State Pension was all-or-nothing — **FIXED**
+
+`Person.full_state_pension` was a boolean, so a partner short of qualifying
+years either got the full rate or nothing, and the code raised
+`NotImplementedError` rather than pro-rate. It is now
+`state_pension_qualifying_years`, straight-line between 10 and 35. This matters
+because the gap is a lever, not just an error: `class_3_payback_years()` returns
+2.6, which is the best guaranteed return most households can buy, and the person
+with the gap is usually the one who took time out to raise children.
+
+### 1.6b Contributions kept flowing after death — **FIXED**
+
+`PlanYear.contributions` was keyed by slot alone, so `for_survivors` could not
+tell whose contribution it was and left a dead person's pension being paid into
+out of the survivor's money. Now keyed `(owner, slot, amount)` and dropped on
+death. Found while adding relief at source, where the same bug would have
+created money outright — the cash outflow stops, the pot credit would not have.
+
 ### 1.7 One tax system for 45 years — **medium**
 
 We model a single snapshot of 2025/26 rules for four decades, having just

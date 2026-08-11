@@ -16,6 +16,7 @@ from .model import (
     Assumptions,
     Asset,
     AssetType,
+    Contribution,
     ExpenseCategory,
     FiscalDrag,
     Frequency,
@@ -24,10 +25,12 @@ from .model import (
     IncomeType,
     Person,
     Phase,
+    ReliefAtSource,
 )
 from .mortality import FixedAge
 from .scenario import Scenario
 from .tax import TaxSystem
+from .tax.uk import RELIEF_END_AGE, STATE_PENSION_QUALIFYING_YEARS
 from .timeline import add_years, age_on, debt_payment_schedule, earliest, latest, months_remaining, overlap_fraction
 
 CASH_RESERVE = "__cash_reserve"
@@ -86,8 +89,17 @@ class PlanYear:
     """Per person, not a household total: income belonging to someone who has
     died must stop being paid to a household that no longer contains them."""
 
-    contributions: tuple[tuple[int, float], ...]
-    """(asset slot, amount paid in this year)."""
+    contributions: tuple[tuple[str, int, float], ...]
+    """(owner, asset slot, amount paid in this year).
+
+    Keyed by owner as well as slot so `for_survivors` can stop paying into a
+    dead person's pension -- a slot alone cannot say whose contribution it was.
+    """
+    relief_at_source_net_by_person: dict[str, float]
+    """Cash leaving the household this year to fund `contributions` paid from
+    taxed money, by whose pension receives it. The gross is already in
+    `contributions`; this is the part that has to be found from income or
+    capital, which is why it counts towards `fixed_spend`."""
     lump_sums_by_person: dict[str, float]
     """DB retirement lump sums, by whose entitlement they are. Invested for that
     person (ISA then GIA), not pooled into shared cash — see
@@ -108,11 +120,16 @@ class PlanYear:
     no withdrawal rule may cut it."""
 
     @property
+    def relief_at_source_net(self) -> float:
+        return sum(self.relief_at_source_net_by_person.values())
+
+    @property
     def fixed_spend(self) -> float:
         """Spending a withdrawal strategy is not allowed to cut."""
         return (
             self.essential + self.care_cost
             + self.debt_payment + self.one_off + self.gifts
+            + self.relief_at_source_net
         )
 
     @property
@@ -254,6 +271,7 @@ def _survivor_year(year: PlanYear, alive: frozenset[str], assumptions) -> PlanYe
             db_income_by_person={}, state_pension_by_person={},
             taxable_other_by_person={}, tax_free_income_by_person={},
             contributions=(), lump_sums_by_person={},
+            relief_at_source_net_by_person={},
             essential=0.0, nominal_discretionary=0.0, debt_payment=0.0,
             one_off=0.0, gifts=0.0,
         )
@@ -291,6 +309,10 @@ def _survivor_year(year: PlanYear, alive: frozenset[str], assumptions) -> PlanYe
         tax_free_income_by_person=move_to_heir(year.tax_free_income_by_person),
         # An unpaid DB lump sum dies with the entitlement it was attached to.
         lump_sums_by_person=drop_dead(year.lump_sums_by_person),
+        # Nobody contributes to a dead person's pension: the salary funding it
+        # has stopped, and the pot is the survivor's to draw, not to top up.
+        contributions=tuple(c for c in year.contributions if c[0] not in dead),
+        relief_at_source_net_by_person=drop_dead(year.relief_at_source_net_by_person),
         essential=year.essential * assumptions.survivor_essential_factor,
         nominal_discretionary=(
             year.nominal_discretionary * assumptions.survivor_discretionary_factor
@@ -477,21 +499,22 @@ class _YearIncome:
     employment: dict[str, float] = field(default_factory=dict)
     taxable_other: dict[str, float] = field(default_factory=dict)
     tax_free: dict[str, float] = field(default_factory=dict)
-    contributions: dict[int, float] = field(default_factory=dict)
+    contributions: dict[tuple[str, int], float] = field(default_factory=dict)
+    relief_at_source_net: dict[str, float] = field(default_factory=dict)
 
 
 def _pay_contributions(
-    into: dict[int, float],
+    into: dict[tuple[str, int], float],
     ledger: _Ledger,
     salary: IncomeSource,
     stop: date | None,
     start: date,
     end: date,
 ) -> float:
-    """Pay this salary's pension contributions; returns the amount sacrificed."""
+    """Pay this salary's payroll contributions; returns the amount sacrificed."""
     sacrificed = 0.0
     for asset in ledger.assets:
-        if asset.contributions is None or asset.owner != salary.owner:
+        if not isinstance(asset.contributions, Contribution) or asset.owner != salary.owner:
             continue
         # A Contribution's own window narrows the salary's rather than replacing
         # it: Coast FIRE stops contributing while the salary (and its tax and NI)
@@ -503,14 +526,49 @@ def _pay_contributions(
             continue
         employee = asset.contributions.employee_monthly * 12 * fraction
         employer = asset.contributions.employer_monthly * 12 * fraction
-        _add(into, ledger.slot_of[asset.name], employee + employer)
+        _add(into, (asset.owner, ledger.slot_of[asset.name]), employee + employer)
         sacrificed += employee
     return sacrificed
+
+
+def _pay_relief_at_source(
+    year: "_YearIncome",
+    ledger: _Ledger,
+    people: dict[str, Person],
+    tax: TaxSystem,
+    start: date,
+    end: date,
+) -> None:
+    """Pay contributions made from taxed money, grossed up and capped.
+
+    Independent of any salary: this is the route by which a household funds a
+    pension for someone with no earnings at all. The cap uses this year's
+    figures, so a contribution stated inside the limits today can be trimmed
+    decades later as the flat non-earner limit erodes in real terms.
+    """
+    for asset in ledger.assets:
+        if not isinstance(asset.contributions, ReliefAtSource):
+            continue
+        person = people[asset.owner]
+        relief_ends = add_years(person.date_of_birth, RELIEF_END_AGE)
+        fraction = overlap_fraction(
+            start, end, asset.contributions.start,
+            earliest(asset.contributions.end, relief_ends),
+        )
+        if fraction <= 0:
+            continue
+        ceiling = tax.relievable_gross(year.salary_gross.get(asset.owner, 0.0))
+        wanted = tax.gross_up_relief_at_source(asset.contributions.net_annual)
+        gross = min(wanted, ceiling) * fraction
+        _add(year.contributions, (asset.owner, ledger.slot_of[asset.name]), gross)
+        _add(year.relief_at_source_net, asset.owner, gross * (1.0 - tax.relief_at_source_rate))
 
 
 def _income_for_year(
     household: Household,
     ledger: _Ledger,
+    people: dict[str, Person],
+    tax: TaxSystem,
     retirement: dict[str, date],
     index: int,
     start: date,
@@ -537,6 +595,7 @@ def _income_for_year(
                 year.contributions, ledger, income, stop, start, end
             )
             _add(year.employment, income.owner, amount - sacrificed)
+    _pay_relief_at_source(year, ledger, people, tax, start, end)
     return year
 
 
@@ -571,9 +630,27 @@ def _state_pension_for_year(
     paid: dict[str, float] = {}
     for name, person in people.items():
         fraction = overlap_fraction(start, end, payable_from[name], None)
-        if fraction > 0 and person.full_state_pension:
-            paid[name] = assumptions.state_pension_annual * fraction
+        entitlement = _state_pension_entitlement(person, assumptions)
+        if fraction > 0 and entitlement > 0:
+            paid[name] = entitlement * fraction
     return paid
+
+
+def _state_pension_entitlement(person: Person, assumptions: Assumptions) -> float:
+    """This person's full-year State Pension, pro-rated for a short NI record.
+
+    `Assumptions.state_pension_annual` is the household's assumed *full* rate,
+    so the two compose: change the rate for everyone, the record for one
+    person. Below ten qualifying years nothing is payable at all.
+    """
+    years = person.state_pension_qualifying_years
+    if years < 10:
+        return 0.0
+    return (
+        assumptions.state_pension_annual
+        * min(years, STATE_PENSION_QUALIFYING_YEARS)
+        / STATE_PENSION_QUALIFYING_YEARS
+    )
 
 
 def _spending_for_year(
@@ -683,7 +760,9 @@ def compile_plan(
         start = as_of if i == 0 else add_years(as_of, i)
         end = add_years(as_of, i + 1)
 
-        income = _income_for_year(household, ledger, retirement, i, start, end)
+        income = _income_for_year(
+            household, ledger, people, tax_by_index[i], retirement, i, start, end
+        )
         db_income, lump_sums = _db_entitlements_for_year(db_assets, people, start, end)
         essential, discretionary = _spending_for_year(
             household, scenario, household_retirement, start, end
@@ -715,7 +794,11 @@ def compile_plan(
                 ),
                 taxable_other_by_person=income.taxable_other,
                 tax_free_income_by_person=income.tax_free,
-                contributions=tuple(sorted(income.contributions.items())),
+                contributions=tuple(
+                    (owner, slot, amount)
+                    for (owner, slot), amount in sorted(income.contributions.items())
+                ),
+                relief_at_source_net_by_person=income.relief_at_source_net,
                 lump_sums_by_person=lump_sums,
                 maturities=tuple(
                     (

@@ -117,8 +117,8 @@ def check_formula() -> None:
 # 2. Full household, run under both regimes.
 
 def build_household(count_pension_as_capital: bool) -> Household:
-    ta = Person("TA", TA_DOB, full_state_pension=True, sex="male")
-    mrs_ta = Person("Mrs TA", MRS_TA_DOB, full_state_pension=True, sex="female")
+    ta = Person("TA", TA_DOB, sex="male")
+    mrs_ta = Person("Mrs TA", MRS_TA_DOB, sex="female")
     assets = [
         Asset("TA — ISA", AssetType.ISA, "TA", 100_000.0, returns=FixedReal(0.0)),
         Asset("Mrs TA — ISA", AssetType.ISA, "Mrs TA", 50_000.0, returns=FixedReal(0.0)),

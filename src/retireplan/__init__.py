@@ -58,6 +58,7 @@ from .model import (
     PensionAccess,
     Person,
     Phase,
+    ReliefAtSource,
 )
 from .diagnostics import PlanDiagnostics, diagnose
 from .plan import Plan, PlanYear, compile_plan
@@ -99,6 +100,7 @@ __all__ = [
     "Asset", "AssetType", "Assumptions", "Contribution", "Debt", "DefinedBenefit",
     "Expense", "ExpenseCategory", "FiscalDrag", "Frequency", "Goal", "Household",
     "IncomeSource", "IncomeType", "Maturity", "PensionAccess", "Person", "Phase",
+    "ReliefAtSource",
     # market
     "BlockBootstrap", "Blend", "FixedNominal", "FixedReal", "HeldToMaturityCredit",
     "MarketData", "ParametricNormal", "ReturnModel", "SampledSeries",

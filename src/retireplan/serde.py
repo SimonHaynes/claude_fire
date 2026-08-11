@@ -40,7 +40,9 @@ from .model import (
     Maturity,
     Person,
     Phase,
+    ReliefAtSource,
 )
+from .tax.uk import STATE_PENSION_QUALIFYING_YEARS
 
 
 def _d(value: date | None) -> str | None:
@@ -104,13 +106,53 @@ def return_model_from_dict(raw: dict[str, Any]) -> ReturnModel:
 
 
 
+def _contributions_to_dict(
+    contributions: Contribution | ReliefAtSource | None,
+) -> dict[str, Any] | None:
+    """Tagged with `relief`, because a net figure and a gross one are not
+    interchangeable and a JSON file loses the type that told them apart."""
+    if contributions is None:
+        return None
+    if isinstance(contributions, ReliefAtSource):
+        return {
+            "relief": "at_source",
+            "net_annual": contributions.net_annual,
+            "start": _d(contributions.start),
+            "end": _d(contributions.end),
+        }
+    return {
+        "relief": "salary_sacrifice",
+        "employee_monthly": contributions.employee_monthly,
+        "employer_monthly": contributions.employer_monthly,
+        "start": _d(contributions.start),
+        "end": _d(contributions.end),
+    }
+
+
+def _contributions_from_dict(raw: dict[str, Any] | None) -> Contribution | ReliefAtSource | None:
+    if not raw:
+        return None
+    if raw.get("relief") == "at_source":
+        return ReliefAtSource(
+            net_annual=raw["net_annual"],
+            start=_pd(raw.get("start")),
+            end=_pd(raw.get("end")),
+        )
+    return Contribution(
+        employee_monthly=raw["employee_monthly"],
+        employer_monthly=raw["employer_monthly"],
+        start=_pd(raw.get("start")),
+        end=_pd(raw.get("end")),
+    )
+
+
 def household_to_dict(household: Household) -> dict[str, Any]:
     return {
         "people": [
             {
                 "name": p.name,
                 "date_of_birth": _d(p.date_of_birth),
-                "full_state_pension": p.full_state_pension,
+                "state_pension_qualifying_years": p.state_pension_qualifying_years,
                 "sex": p.sex,
             }
             for p in household.people
@@ -161,16 +203,7 @@ def household_to_dict(household: Household) -> dict[str, Any]:
                 "returns": return_model_to_dict(a.returns),
                 "annual_charge_pct": a.annual_charge_pct,
                 "flat_annual_fee": a.flat_annual_fee,
-                "contributions": (
-                    {
-                        "employee_monthly": a.contributions.employee_monthly,
-                        "employer_monthly": a.contributions.employer_monthly,
-                        "start": _d(a.contributions.start),
-                        "end": _d(a.contributions.end),
-                    }
-                    if a.contributions
-                    else None
-                ),
+                "contributions": _contributions_to_dict(a.contributions),
                 "maturity": (
                     {"on": _d(a.maturity.on), "rollover_to": a.maturity.rollover_to}
                     if a.maturity
@@ -275,7 +308,9 @@ def household_from_dict(raw: dict[str, Any]) -> Household:
             Person(
                 name=p["name"],
                 date_of_birth=_pd(p["date_of_birth"]),  # type: ignore[arg-type]
-                full_state_pension=p.get("full_state_pension", True),
+                state_pension_qualifying_years=p.get(
+                    "state_pension_qualifying_years", STATE_PENSION_QUALIFYING_YEARS
+                ),
                 sex=p.get("sex"),
             )
             for p in raw.get("people", [])
@@ -326,16 +361,7 @@ def household_from_dict(raw: dict[str, Any]) -> Household:
                 returns=return_model_from_dict(a["returns"]),
                 annual_charge_pct=a.get("annual_charge_pct", 0.0),
                 flat_annual_fee=a.get("flat_annual_fee", 0.0),
-                contributions=(
-                    Contribution(
-                        employee_monthly=a["contributions"]["employee_monthly"],
-                        employer_monthly=a["contributions"]["employer_monthly"],
-                        start=_pd(a["contributions"].get("start")),
-                        end=_pd(a["contributions"].get("end")),
-                    )
-                    if a.get("contributions")
-                    else None
-                ),
+                contributions=_contributions_from_dict(a.get("contributions")),
                 maturity=(
                     Maturity(on=_pd(a["maturity"]["on"]), rollover_to=a["maturity"]["rollover_to"])  # type: ignore[arg-type]
                     if a.get("maturity")

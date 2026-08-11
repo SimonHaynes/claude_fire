@@ -5,6 +5,9 @@ description: UK pension, ISA and inheritance tax rules and the drawdown strategy
 
 # UK pension and IHT strategy
 
+This skill covers money coming **out**. Contributions, tax relief, whose name to
+build wealth in and State Pension gaps are `uk-tax-relief-and-allowances`.
+
 **Verify every figure before advising.** These are 2026/27 and change each
 Budget. If a number here disagrees with `retireplan.tax.uk` or
 `retireplan.tax.iht`, find out which is stale before using either.
@@ -103,7 +106,8 @@ the rate.
 5. **Use both people's bands** — two allowances and two basic-rate bands are
    worth roughly £25,000 and £100,000 a year of cheap income between them.
    (`TaxEfficientOrder` fills each person's band in turn but does not yet
-   optimise across them — see REVIEW.md.)
+   optimise across them — see REVIEW.md.) Equalising the *pots* beats optimising
+   the order they are drawn in: `uk-tax-relief-and-allowances`.
 6. **Spend the pension, not the shelters.** Under the optimum the pension funds
    96–100% of spending and the ISA/GIA are a *destination* for the tax-free cash
    and surplus, not a source. A PCLS that gets spent has been wasted: its value

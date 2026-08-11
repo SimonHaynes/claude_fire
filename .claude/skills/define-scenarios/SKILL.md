@@ -60,6 +60,8 @@ possible, bounded only by hard constraints.
 | `income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=...)` | a safety-first floor |
 | `death_ages={"Name": 75}` | the survivor's position |
 | a `LifeTable` household against the `FixedAge` default | mortality |
+| `ReliefAtSource` on the lower earner's pension | funding a partner's pension — see `uk-tax-relief-and-allowances` for when it pays |
+| raised `state_pension_qualifying_years` + a matching `OneOffSpend` | buying back NI years |
 
 - `BondTent` is the Kitces/Pfau finding that sequence risk peaks *at*
   retirement: de-risk into it and re-risk after, rather than `GlidePath`'s
