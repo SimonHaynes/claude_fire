@@ -34,6 +34,19 @@ class YearResult:
     how the statistics below know to exclude a year rather than count it as a
     year of zero spending."""
     gross_income: float
+    employment_income: float
+    """Salary before sacrifice, matching `gross_income`. The NI-able figure is
+    lower; this is the one a client recognises as their pay."""
+    state_pension_income: float
+    db_income: float
+    other_taxable_income: float
+    """Rental and the like, plus `income_annuity_income` — an annuity is bought
+    once and then paid like any other taxable income, so it lands here."""
+    tax_free_income: float
+    """`employment_income` through `tax_free_income` partition `gross_income`.
+    Kept as five fields rather than one because a cash-flow chart has to show
+    where a year's income came from, and the plan-year they were resolved from
+    is not reachable from a `YearResult` alone."""
     tax_paid: float
     ni_paid: float
     essential_spending: float
@@ -127,7 +140,9 @@ def _dead_year(plan: Plan, year: PlanYear, portfolio: Portfolio) -> YearResult:
     balances = {plan.slot_names[s]: b for s, b in enumerate(portfolio.balances)}
     return YearResult(
         year=year.calendar_year, ages=year.ages, is_retired=True, alive=frozenset(),
-        gross_income=0.0, tax_paid=0.0, ni_paid=0.0,
+        gross_income=0.0, employment_income=0.0, state_pension_income=0.0,
+        db_income=0.0, other_taxable_income=0.0, tax_free_income=0.0,
+        tax_paid=0.0, ni_paid=0.0,
         essential_spending=0.0, discretionary_spending=0.0, nominal_discretionary=0.0,
         debt_payments=0.0, one_off_spending=0.0, gifts_given=0.0,
         isa_withdrawn=0.0, gia_withdrawn=0.0, dc_withdrawn_gross=0.0,
@@ -735,15 +750,24 @@ def project(
         )
         tax_paid += bed_and_isa_cgt
 
+        employment = sum(year.salary_gross_by_person.values())
+        state_pension = sum(year.state_pension_by_person.values())
+        db = sum(year.db_income_by_person.values())
+        other_taxable = sum(year.taxable_other_by_person.values())
+
         results.append(
             YearResult(
                 year=year.calendar_year,
                 ages=year.ages,
                 is_retired=year.is_retired,
                 alive=alive,
-                gross_income=sum(year.salary_gross_by_person.values())
-                + sum(year.other_taxable_by_person.values())
+                gross_income=employment + state_pension + db + other_taxable
                 + year.tax_free_income,
+                employment_income=employment,
+                state_pension_income=state_pension,
+                db_income=db,
+                other_taxable_income=other_taxable,
+                tax_free_income=year.tax_free_income,
                 tax_paid=tax_paid,
                 ni_paid=ni_paid,
                 essential_spending=year.essential + year.care_cost,

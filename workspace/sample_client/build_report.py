@@ -26,8 +26,10 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from retireplan import run_monte_carlo
-from retireplan.reporting import dial_svg, fan_chart_svg, render_pdf
+from retireplan import project_once, run_monte_carlo
+from retireplan.reporting import (
+    LifePhase, cashflow_chart_svg, dial_svg, fan_chart_svg, render_pdf,
+)
 
 from .household import AS_OF, SAMPLE_CLIENT
 from .run_scenarios import CACHE_DIR, N_TRIALS, SEED
@@ -205,7 +207,13 @@ def build_context() -> dict:
     }
 
     # --- section 4: the recommended scenario in detail ---------------------
-    section4 = _detail_section(recommended, window)
+    # One deterministic path for the cash-flow chart. It cannot come from the
+    # Monte Carlo: percentile bands do not stack, because the trial at the
+    # median for pension drawdown is not the one at the median for ISA
+    # withdrawals, so a stack of them would draw a year nobody lived.
+    section4 = _detail_section(
+        recommended, window, project_once(SAMPLE_CLIENT, HEADLINE["recommended"], AS_OF)
+    )
 
     # --- section 5: recommendations ----------------------------------------
     flat = variants["withdrawal_spend_nominal"]
@@ -365,7 +373,29 @@ def build_context() -> dict:
     }
 
 
-def _detail_section(result, window: str) -> dict:
+def _life_phases(projection) -> tuple[LifePhase, ...]:
+    """How this household describes its own retirement, dated off the
+    projection rather than typed in. The names are theirs; only the boundaries
+    are the model's, so a revised retirement date moves the band with it."""
+    retirement = next(y.year for y in projection.years if y.is_retired)
+
+    def year_older_turns(age: int) -> int | None:
+        return next(
+            (y.year for y in projection.years
+             if y.year > retirement and max(y.ages.values(), default=0) >= age),
+            None,
+        )
+
+    phases = [LifePhase("Working", projection.years[0].year),
+              LifePhase("The active years", retirement)]
+    for label, age in (("Slowing down", 78), ("Later life", 88)):
+        year = year_older_turns(age)
+        if year is not None:
+            phases.append(LifePhase(label, year))
+    return tuple(phases)
+
+
+def _detail_section(result, window: str, projection) -> dict:
     """Section 4: everything that only makes sense one scenario at a time."""
     labels = result.year_labels()
 
@@ -442,6 +472,18 @@ def _detail_section(result, window: str) -> dict:
         ),
         "bridge_intro": bridge_intro,
         "bridge_rows": bridge_rows,
+        "cashflow_title": "Where each year's money comes from",
+        "cashflow_caption": (
+            "One bar per year, stacked by source, with the band beneath naming the stretch "
+            "of life each year falls in. The heavy line is what is left after income tax and "
+            "National Insurance, so the gap between it and the top of a bar is the tax bill. "
+            "The lighter line is total spending and the dashed line is essentials alone — the "
+            "distance between those two is the discretionary spending the guardrail is "
+            "allowed to cut. Read this as the shape of the plan, not as a forecast: it is a "
+            "single path at steady average returns, which is the only way a stack like this "
+            "can be drawn. The charts below carry the range of outcomes instead."
+        ),
+        "cashflow_svg": cashflow_chart_svg(projection, phases=_life_phases(projection)),
         "fanchart_title": "Total wealth over the plan",
         "fanchart_caption": (
             "Median, with the 10th–90th and 5th–95th percentile bands around it. Shown to "

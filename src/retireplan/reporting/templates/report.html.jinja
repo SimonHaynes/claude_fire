@@ -187,6 +187,11 @@
   .fanchart-caption { font-size: 8.5pt; color: var(--ink-muted); margin-bottom: 6pt; }
   .fanchart { width: 100%; height: auto; }
 
+  /* The cash-flow chart carries a phase band and a legend inside the SVG, so
+     it needs less padding under it than a fan chart does. */
+  .cashflow-wrap { padding-bottom: 10pt; margin-bottom: 14pt; }
+  .cashflow-chart { width: 100%; height: auto; }
+
   /* Per-asset-type fan charts, stacked vertically -- each subplot keeps its
      own y-scale (a Pension in the millions and a flat £750k Property share
      one x-axis, never one y-axis; see the dataviz skill's "one axis" rule,
@@ -371,6 +376,14 @@
     <tr><td>{{ row.name }}</td><td class="num">{{ row.p10 }}</td><td class="num">{{ row.p50 }}</td><td class="num">{{ row.p90 }}</td></tr>
     {% endfor %}
   </table>
+  {% endif %}
+
+  {% if section4.cashflow_svg %}
+  <div class="fanchart-wrap cashflow-wrap">
+    <h3>{{ section4.cashflow_title }}</h3>
+    <p class="fanchart-caption">{{ section4.cashflow_caption }}</p>
+    {{ section4.cashflow_svg | safe }}
+  </div>
   {% endif %}
 
   <div class="fanchart-wrap">

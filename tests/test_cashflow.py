@@ -18,6 +18,7 @@ from retireplan import (
     FixedReal,
     Frequency,
     Household,
+    IncomeAnnuity,
     IncomeSource,
     IncomeType,
     MarketData,
@@ -639,3 +640,55 @@ class TestMarketStress:
         # The ISA is hit by the forced -40% in year one despite a flat path.
         assert projection.years[0].balances["Pension"] == pytest.approx(200_000 * 0.60)
         assert projection.years[1].balances["Pension"] == pytest.approx(200_000 * 0.60)
+
+
+class TestIncomeBreakdown:
+    """`employment_income` through `tax_free_income` must partition
+    `gross_income`. Nothing in the engine reads them -- they exist so the
+    report's cash-flow chart can say where a year's money came from -- which
+    is exactly why they need a test: a field nobody computes against can drift
+    from the total it is supposed to add up to without anything failing.
+    """
+
+    def test_the_five_parts_add_up_to_gross_income(self, simple_household, flat_market):
+        projection = run(simple_household, Scenario(name="base"), flat_market)
+        for year in projection.years:
+            assert (
+                year.employment_income
+                + year.state_pension_income
+                + year.db_income
+                + year.other_taxable_income
+                + year.tax_free_income
+            ) == pytest.approx(year.gross_income, abs=0.01), year.year
+
+    def test_annuity_income_is_inside_other_taxable_not_beside_it(self, flat_market):
+        """An annuity is folded into taxable income when it is paid, so
+        `income_annuity_income` is a *label* on part of
+        `other_taxable_income`, not a sixth part. Adding it again would
+        inflate every post-purchase year of the chart by the annuity."""
+        household = Household(
+            people=[Person("Ada", date(1960, 1, 1))],
+            incomes=[],
+            expenses=[Expense("Living", 20_000, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[
+                Asset("Pension", AssetType.DC_PENSION, "Ada", 500_000, returns=FixedReal(0.0)),
+            ],
+            assumptions=Assumptions(life_expectancy_age=85, state_pension_age=68),
+        )
+        scenario = Scenario(
+            name="annuity",
+            retirement_dates={"Ada": date(2026, 1, 1)},
+            income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=0.3),
+        )
+        projection = run(household, scenario, flat_market)
+        paying = [y for y in projection.years if y.income_annuity_income > 0]
+        assert paying, "the fixture never bought an annuity"
+        for year in paying:
+            assert year.other_taxable_income >= year.income_annuity_income
+            assert (
+                year.employment_income
+                + year.state_pension_income
+                + year.db_income
+                + year.other_taxable_income
+                + year.tax_free_income
+            ) == pytest.approx(year.gross_income, abs=0.01), year.year

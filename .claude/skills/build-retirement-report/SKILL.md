@@ -218,6 +218,24 @@ numbers, 4 goes deep on the recommended one.
    pension unlocks. Report severity — how many bad years, how large the worst —
    via `median_shortfall_year` and individual failing trials.
 
+   **Cash-flow chart** (`section4.cashflow_svg`/`_title`/`_caption`, from
+   `reporting.cashflow_chart_svg(projection)`) — one stacked bar per year
+   showing where that year's money comes from, over a phase band with icon
+   markers on dated events. It takes a **`project_once` projection, not a
+   `SimulationResult`**: percentile bands cannot be stacked, because the trial
+   at the median for pension drawdown is not the one at the median for ISA
+   withdrawals. So **the caption must say it is one path at average returns**
+   and point at the fan charts for the range — this is the one exhibit in the
+   report that is not probabilistic, and a reader who misses that reads a
+   forecast.
+
+   Zero-throughout bands drop themselves. `phases` and `events` default to what
+   the projection dates (`derive_phases` / `derive_events`); pass `phases` to
+   name the stretches of retirement the client described, dating the boundaries
+   off the projection rather than typing years. Keep the default `width` — it
+   is the report's text measure in points, and authoring wider shrinks every
+   label when the SVG is scaled to fit.
+
    **Wealth fan chart** (`section4.fanchart_svg`, from
    `retireplan.reporting.fan_chart_svg`) — 5/10/50/90/95 bands, matching the
    results and asset-mix tables. **Do not pass `horizon_years`** unless no
