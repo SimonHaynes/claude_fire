@@ -107,7 +107,11 @@ VERIFIED_ON = date(2026, 8, 6)
 """When these figures were last checked against gov.uk. A date rather than a
 prose reminder, because `simulation.run_monte_carlo` warns when it goes stale —
 which makes skipping the check a decision rather than an oversight. Move it only
-after actually re-checking."""
+after actually re-checking.
+
+`tax/provenance.py` holds the source behind each figure and the date it is next
+due, so a check is a work list rather than a re-derivation; this date is the
+oldest of them."""
 
 
 @dataclass(frozen=True)

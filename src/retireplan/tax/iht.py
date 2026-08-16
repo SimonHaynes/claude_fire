@@ -34,7 +34,8 @@ PENSIONS_IN_ESTATE_FROM = date(2027, 4, 6)
 ANNUAL_GIFT_EXEMPTION = 3_000.0
 
 VERIFIED_ON = date(2026, 8, 6)
-"""When these figures were last checked against gov.uk — see `tax/uk.py`."""
+"""When these figures were last checked against gov.uk — see `tax/uk.py`, and
+`tax/provenance.py` for the sources and when each is next due."""
 
 GIFT_TAPER = ((3, 1.0), (4, 0.8), (5, 0.6), (6, 0.4), (7, 0.2))
 """Multiplier on the *tax* on a gift, by full years the donor survived it. It

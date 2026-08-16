@@ -316,6 +316,41 @@ beneficiaries' income tax on inherited pension funds).
 overstate what reaches the children by more than half. Expect a good tax
 strategy to produce a *smaller* estate and a *larger* inheritance.
 
+`tax/trusts.py` covers the relevant property regime — entry, ten-year and exit
+charges — plus trust income tax, trustee CGT and the capped agricultural and
+business reliefs. It sits outside the projection engine because a settlement is
+a **separate taxpayer** from the person who created it, with its own nil-rate
+band fixed at commencement, an income tax rate at the top of the scale from the
+first pound and no CGT uplift on death.
+
+```bash
+.venv/bin/python tools/trust_charges.py --value 600000 --years 30 --growth 0.04
+.venv/bin/python tools/validate_trust_charges.py   # parity with HMRC's own workings
+```
+
+The charge is on the **whole fund**, not the excess over the nil-rate band —
+6% of everything at the top, so a fund at twice the band pays 3%. That
+misreading is the commonest expensive error in the area, which is why
+`validate_trust_charges.py` reproduces HMRC's published worked examples to the
+penny rather than trusting the implementation.
+
+### Where the figures come from
+
+`tax/provenance.py` records, for every hardcoded rate and threshold, the primary
+source, when it was last checked, when it is next due, and what would move it.
+A recheck date drawn from each figure's own timetable — a Budget, an April
+uprating, a legislated commencement date — turns "verify everything" into a
+short work list.
+
+```bash
+.venv/bin/python tools/check_tax_freshness.py              # what is due now
+.venv/bin/python tools/check_tax_freshness.py --check-urls # sources still reachable
+```
+
+It exits non-zero when something is due, so it works as a gate before anything a
+client reads, and it cross-checks each module's `verified_on` against the
+register so the two cannot drift apart.
+
 ## Return models
 
 The choice that most often flatters a plan:

@@ -37,10 +37,11 @@ which scenario produced it.
 ## How to work
 
 **Verify rates before advising.** Tax changes every Budget and this domain has
-just been through a structural change. Check gov.uk for any figure that matters,
-rather than a constant in the codebase or a number in a document — the skill's
-own table included. A stale `verified_on` on `retireplan.tax.uk` or
-`tax.iht` is a signal to re-verify, not a formality to note.
+just been through a structural change. Run
+`.venv/bin/python tools/check_tax_freshness.py`: it lists every figure whose
+recheck date has passed, with the source that establishes it. Clear what it
+flags with `verify-tax-figures` (or hand it to `tax-figure-verifier`) rather
+than quoting a stale figure with a caveat attached.
 
 **Run the comparison; do not assert it.** "Drawing from the pension first would
 be better here" takes seconds to test and is often wrong for a specific
@@ -82,10 +83,11 @@ often get reasoned past, so check each explicitly before you answer:
 
 ## What you cannot answer
 
-Wills, trusts and how assets are owned are covered by
-`legal-and-trust-structuring`, not here — say so and hand over rather than
-improvising, because the care means test and the IHT position pull in
-different directions and getting that wrong is expensive.
+Wills and how assets are owned are covered by `legal-and-trust-structuring`;
+trusts themselves belong to `uk-trust-strategist`. Hand over rather than
+improvising: the care means test and the IHT position pull in different
+directions, and a settlement is a separate taxpayer with charges of its own
+that do not appear in an estate calculation.
 
 Business relief, offshore arrangements and anything jurisdiction-specific
 beyond England are out of scope. Annual exemptions and gifts from

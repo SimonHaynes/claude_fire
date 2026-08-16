@@ -14,6 +14,11 @@ needs a STEP-qualified solicitor, and several are actively harmful done badly.
 Your job: identify what is worth a conversation, model what the engine can cost,
 and be explicit about which is which.
 
+**`uk-trusts` owns the trusts themselves** — the types, the relevant property
+charges, trust income tax and CGT, registration and the traps. This skill owns
+the care means test, deprivation, ownership and gifting, and says only which
+structure the situation points at. Load both when they meet, which is often.
+
 **Verify before advising.** Figures are England 2025/26 and move most years.
 Scotland, Wales and Northern Ireland differ materially — Scotland has legal
 rights that override a will, and different care funding.
@@ -56,16 +61,15 @@ there for life, the half share passing to the children afterwards. On a later
 assessment the survivor owns half a house, and the trust half is generally
 outside their assessable capital; it also protects the children's share against
 remarriage. Two cautions: the survivor's security depends entirely on drafting,
-and a trust holding property carries its own tax and administration.
+and a trust holding property carries its own tax and administration — see
+`uk-trusts`, and cost it with `tools/trust_charges.py` rather than waving at it.
 
-**Discretionary vs IPDI will trusts — not modelled.** An IPDI gives the survivor
-a defined right (income, or occupation) and counts as theirs for IHT, so the
-spouse exemption still applies. A discretionary trust gives trustees freedom
-over who benefits and when — more flexible, better for a vulnerable or divorcing
-beneficiary — but sits under the relevant property regime with ten-year and exit
-charges. The choice turns on what is being protected against: tax, care, a
-beneficiary's circumstances, or remarriage. Ask which they care about before
-naming a structure.
+**Discretionary vs IPDI will trusts.** The choice turns on what is being
+protected against — tax, care, a beneficiary's circumstances, or remarriage — so
+ask that before naming a structure. The comparison itself, the charges each
+carries and the residence nil-rate band consequence are in `uk-trusts`, as is
+the two-year window (IHTA s144) that can still fix a discretionary will trust
+after the death. **Check the date of death before saying anything is settled.**
 
 **Nil-rate bands — modelled.** Both transfer between spouses: £650,000 nil-rate
 plus up to £350,000 residence nil-rate. The residence band tapers £1 per £2

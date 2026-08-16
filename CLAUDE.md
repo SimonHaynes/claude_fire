@@ -16,6 +16,32 @@ Express intent in the code, not alongside it.
 - Prefer a structure that makes the invalid state unrepresentable over a check plus a comment explaining the check.
 - Small functions with meaningful names beat a long function with commented blocks.
 
+## Every tax and legislation figure carries a source and two dates
+
+A hardcoded rate, threshold or allowance is a claim about the law **on a date**.
+Without the date it reads as a claim about today, and a stale figure is wrong in
+a way nobody can see.
+
+- Every such figure needs an entry in `src/retireplan/tax/provenance.py`: the
+  primary source URL, `checked_on`, `recheck_by`, and what would move it.
+  gov.uk, HMRC manuals and legislation.gov.uk are primary; an adviser page is a
+  way to find the primary source, never the citation.
+- **`recheck_by` is the earliest date the figure could move** — the Budget, an
+  April uprating, a legislated commencement date — not today plus a year. A
+  freeze is not a reason to skip a check; it binds only what it names and can be
+  cut short.
+- **Never move `checked_on` without opening the source.** A rolled-forward date
+  turns an unknown into a false assurance.
+- A module's `verified_on` equals the oldest check across its sources.
+  `tests/test_provenance.py` and `tools/check_tax_freshness.py` both enforce it.
+- `checked_on=None` means nobody has ever checked, which is not the same as
+  unchanged. Both tools treat it as overdue.
+- Adding a figure with no primary source means it is an assumption, not a
+  figure: put it in `standard-assumptions` with the direction it errs.
+
+Run `tools/check_tax_freshness.py` before anything a client reads. The procedure
+for clearing what it flags is the `verify-tax-figures` skill.
+
 ## Never commit personal data or credentials
 
 Client names, salaries, balances, dates of birth, health notes and API keys must

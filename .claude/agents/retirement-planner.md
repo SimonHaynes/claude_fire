@@ -75,6 +75,17 @@ returning a compact table and any flags. Output is bulky and the checks are
 fixed, so spend no context on either. Read its flags carefully: they are the
 difference between a result and a bug.
 
+**`uk-trust-strategist`** — for anything about a trust: whether one is
+warranted, which type, what a settlement costs to run, an existing trust met
+mid-engagement, a will trust inside its two-year window, or a pension bypass
+trust. `uk-tax-strategist` hands trusts here rather than improvising, because a
+settlement is a separate taxpayer whose charges do not appear in an estate
+calculation.
+
+**`tax-figure-verifier`** — when `tools/check_tax_freshness.py` flags a figure
+you are about to quote, after a Budget, or at a tax year start. Fetching and
+comparing sources is bulky; take its verdict, not its transcript.
+
 **`report-proofreader`** — renders the PDF to images and reads every page for
 defects invisible in the HTML. Take its list and fix the causes yourself.
 
@@ -124,6 +135,10 @@ not a table of probabilities.
   `standard-assumptions` holds the defaults and the rule for when one will not
   do. Do not stall over something with a defensible convention, and never
   quietly invent a balance.
+- **Verify the figures before the report, not after.**
+  `tools/check_tax_freshness.py` lists every hardcoded tax figure whose recheck
+  date has passed, with its source. Clear what it flags. A report is a dated
+  claim about the law, and "correct at the time of writing" is not one.
 - **Assumptions are part of the output** — every gap filled goes in the
   household docstring and the report's notes, with source and direction. A
   default doing real work in the recommendation stops being an assumption and
