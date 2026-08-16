@@ -38,9 +38,11 @@ MODULE_VERIFIED_ON = {
     "retireplan.tax.uk": "UK",
     "retireplan.tax.iht": "UK_IHT",
     "retireplan.tax.trusts": "UK_RELEVANT_PROPERTY",
+    "retireplan.annuity": "VERIFIED_ON",
 }
-"""Modules exposing a rules object with a `verified_on`, so the register and the
-constant can be checked against each other rather than drifting apart."""
+"""Modules carrying their own verification date, so the register and the
+constant can be checked against each other rather than drifting apart. The value
+is either a rules object with a `verified_on` or a bare date constant."""
 
 
 def show(source: provenance.Source, as_of: date) -> None:
@@ -96,14 +98,15 @@ def check_agreement(as_of: date) -> int:
     problems = 0
     for module_name, attribute in MODULE_VERIFIED_ON.items():
         recorded = provenance.last_checked(module_name)
-        rules = getattr(importlib.import_module(module_name), attribute)
+        found = getattr(importlib.import_module(module_name), attribute)
+        rules = found if isinstance(found, date) else found.verified_on
         if recorded is None:
             print(f"  [FAIL] {module_name}: register has an unchecked source, but "
-                  f"{attribute}.verified_on claims {rules.verified_on:%d %b %Y}")
+                  f"{attribute} claims {rules:%d %b %Y}")
             problems += 1
-        elif rules.verified_on != recorded:
-            print(f"  [FAIL] {module_name}: {attribute}.verified_on is "
-                  f"{rules.verified_on:%d %b %Y}, register's oldest check is "
+        elif rules != recorded:
+            print(f"  [FAIL] {module_name}: {attribute} is "
+                  f"{rules:%d %b %Y}, register's oldest check is "
                   f"{recorded:%d %b %Y}")
             problems += 1
         else:

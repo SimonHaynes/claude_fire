@@ -72,9 +72,12 @@ possible, bounded only by hard constraints.
   we stop working".
 - `IncomeAnnuity` is bought once from each accessible DC pension, securing
   essential spending as fully-taxable income for life before the rest is
-  invested for upside. Not `ImmediateNeedsAnnuity`, which is impaired-life,
-  care-only and paid tax-free direct to the provider. Test it whenever a
-  household is anxious about running out rather than about the estate.
+  invested for upside. Priced at the buyer's real age off the gilt curve, with
+  `joint_life_proportion`, `guarantee_years`, `escalation` and `rpi_linked` —
+  see `uk-annuities`, and note the default is **level**, which decays in real
+  terms. Not `ImmediateNeedsAnnuity`, which is impaired-life, care-only and paid
+  tax-free direct to the provider. Test it whenever a household is anxious about
+  running out rather than about the estate.
 - `death_ages` is worth running even though the aggregate already includes first
   death: a client asked to picture twenty years alone on one State Pension needs
   the specific number.

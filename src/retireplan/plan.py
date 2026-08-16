@@ -11,6 +11,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from datetime import date
 
+from .annuity import AnnuityMarket, uk_annuity_market
 from .market import SampledSeries
 from .model import (
     Assumptions,
@@ -235,6 +236,11 @@ class Plan:
     death_index_by_person: dict[str, int]
     """Plan-year in which each person dies, under this scenario's assumptions.
     Stochastic mortality overrides this per trial."""
+
+    annuity_market: AnnuityMarket | None = None
+    """Built once here, and only when the scenario buys an annuity — it reads
+    the gilt curve and mortality table off disk, which no plan that never
+    annuitises should have to have fetched."""
 
     @property
     def n_years(self) -> int:
@@ -849,6 +855,11 @@ def compile_plan(
         death_index_by_person[name] = max(1, (death - as_of).days // 365 + 1)
 
     return Plan(
+        annuity_market=(
+            uk_annuity_market()
+            if scenario.income_annuity is not None and scenario.income_annuity.enabled
+            else None
+        ),
         household=household,
         scenario=scenario,
         tax=tax,

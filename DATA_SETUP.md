@@ -43,6 +43,21 @@ cp .env.example .env
 | `us_short_corporate_<start>_<end>.csv` | Yahoo Finance IGSB adjusted close, deflated by the same CPI | No |
 | `us_recession_<start>_<end>.csv` | FRED `USREC`, aggregated to a fractional per-year figure | **Yes** |
 
+## Gilt yields (annuity pricing)
+
+```bash
+.venv/bin/python tools/fetch_gilt_yields.py
+```
+
+Writes `data/gilts/uk_gilt_yields_<start>_<end>.csv`: monthly UK nominal par yields and
+implied inflation at 5, 10 and 20 years, from the Bank of England's Interest &
+Exchange Rates database. No key needed.
+
+`retireplan.annuity` needs it to price anything; without it an annuity quote
+raises `FileNotFoundError` rather than guessing, and `tests/test_annuity.py`
+skips its market-parity case. The Bank publishes under its own terms — check
+them before redistributing, as with every other source here.
+
 `us_long_*.csv` carries seven real return series from one table — `global_equity`
 (S&P 500), `gov_bonds` (10-year Treasury), `small_cap`, `tbills`,
 `baa_corporate`, `real_estate` and `gold` — plus the `inflation` column that

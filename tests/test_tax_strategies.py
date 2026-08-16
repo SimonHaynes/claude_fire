@@ -220,42 +220,114 @@ class TestIncomeAnnuity:
         assert all(y.income_annuity_premium == 0 for y in projection.years)
         assert all(y.income_annuity_income == 0 for y in projection.years)
 
-    def test_bought_once_and_pays_a_level_income(self):
+    def test_bought_once_at_a_market_rate(self):
         household = retired_household(pension=400_000, isa=0.0, spend=1_000)
-        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=0.5, life_expectancy_years=20, loading=1.15)
+        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=0.5)
         scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
                             income_annuity=annuity)
         projection = run(household, scenario)
         first, second = projection.years[0], projection.years[1]
-        expected_premium = 200_000.0
-        expected_benefit = expected_premium / (20 * 1.15)
-        assert first.income_annuity_premium == pytest.approx(expected_premium)
-        assert first.income_annuity_income == pytest.approx(expected_benefit, rel=1e-6)
-        # A one-off event: the second year draws no further premium, but the
-        # income -- once secured -- keeps paying.
-        assert second.income_annuity_premium == 0.0
-        assert second.income_annuity_income == pytest.approx(expected_benefit, rel=1e-6)
+        assert first.income_annuity_premium == pytest.approx(200_000.0)
         assert first.balances["Pension"] == pytest.approx(200_000.0, abs=1.0)
+        # Priced off the gilt curve rather than a flat divisor: a mid-sixties
+        # buyer is in single digits as a percentage of premium, and nowhere
+        # near the 4-5% the old life-expectancy-over-loading pricing produced.
+        assert 0.05 < first.income_annuity_income / 200_000.0 < 0.12
+        # A one-off event: no further premium, and the income keeps paying.
+        assert second.income_annuity_premium == 0.0
+        assert second.income_annuity_income > 0
+
+    def test_a_level_annuity_loses_real_value_every_year(self):
+        """The market sells nominal annuities and this engine counts purchasing
+        power, so a level annuity's contribution has to fall. Getting this wrong
+        silently overstates a floor-and-upside plan for its whole length."""
+        household = retired_household(pension=400_000, isa=0.0, spend=1_000)
+        scenario = Scenario("s", retirement_dates={"Alex": AS_OF}, withdrawal=SpendNominal(),
+                            income_annuity=IncomeAnnuity(
+                                enabled=True, fraction_of_pot=0.5, assumed_inflation=0.02))
+        paying = [y for y in run(household, scenario).years if y.income_annuity_income > 0]
+        assert paying[1].income_annuity_income == pytest.approx(
+            paying[0].income_annuity_income / 1.02, rel=1e-9)
+        assert paying[10].income_annuity_income < paying[0].income_annuity_income * 0.85
+
+    def test_an_rpi_linked_annuity_holds_its_value_and_costs_more(self):
+        household = retired_household(pension=400_000, isa=0.0, spend=1_000)
+
+        def paying(annuity):
+            scenario = Scenario("s", retirement_dates={"Alex": AS_OF},
+                                withdrawal=SpendNominal(), income_annuity=annuity)
+            return [y for y in run(household, scenario).years if y.income_annuity_income > 0]
+
+        level = paying(IncomeAnnuity(enabled=True, fraction_of_pot=0.5))
+        linked = paying(IncomeAnnuity(enabled=True, fraction_of_pot=0.5, rpi_linked=True))
+        assert linked[0].income_annuity_income < level[0].income_annuity_income
+        assert linked[10].income_annuity_income == pytest.approx(
+            linked[0].income_annuity_income, rel=1e-9)
+
+    def test_annuitising_later_buys_a_better_rate(self):
+        """Pricing at the annuitant's real age is what makes *when* a question."""
+        def rate(born: date) -> float:
+            household = Household(
+                people=[Person("Alex", born)],
+                expenses=[Expense("Living", 1_000.0, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+                assets=[Asset("Pension", AssetType.DC_PENSION, "Alex", 400_000.0,
+                              returns=FixedReal(0.0))],
+                assumptions=Assumptions(life_expectancy_age=95, state_pension_age=99),
+            )
+            scenario = Scenario("s", retirement_dates={"Alex": AS_OF},
+                                withdrawal=SpendNominal(),
+                                income_annuity=IncomeAnnuity(enabled=True, fraction_of_pot=0.5))
+            first = run(household, scenario).years[0]
+            return first.income_annuity_income / first.income_annuity_premium
+
+        assert rate(date(1951, 1, 1)) > rate(date(1961, 1, 1))
 
     def test_income_is_taxed_and_stops_at_death(self):
         """Folded into ordinary taxable income (unlike a care annuity's
-        fees, which are paid tax-free direct to the provider), and single-life:
-        it stops outright when the annuitant dies, even though the household
-        -- and the plan -- continues."""
+        fees, which are paid tax-free direct to the provider), and single-life
+        by default: it stops outright when the annuitant dies, even though the
+        household -- and the plan -- continues."""
         household = Household(
             people=[Person("Alex", date(1960, 1, 1)), Person("Sam", date(1962, 1, 1))],
             expenses=[Expense("Living", 1_000.0, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
             assets=[Asset("Pension", AssetType.DC_PENSION, "Alex", 400_000.0, returns=FixedReal(0.0))],
             assumptions=Assumptions(life_expectancy_age=90, state_pension_age=99),
         )
-        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=1.0, life_expectancy_years=20, loading=1.0)
+        annuity = IncomeAnnuity(enabled=True, fraction_of_pot=1.0)
         scenario = Scenario("s", retirement_dates={"Alex": AS_OF, "Sam": AS_OF}, withdrawal=SpendNominal(),
                             income_annuity=annuity, death_ages={"Alex": 67})
         projection = run(household, scenario)
-        assert projection.years[0].income_annuity_income == pytest.approx(20_000.0)
+        assert projection.years[0].income_annuity_income > 0
         assert projection.years[0].tax_paid > 0
         assert projection.years[2].income_annuity_income == 0.0
         assert projection.years[2].alive == frozenset({"Sam"})
+
+    def test_a_joint_life_annuity_keeps_paying_the_survivor(self):
+        household = Household(
+            people=[Person("Alex", date(1960, 1, 1)), Person("Sam", date(1962, 1, 1))],
+            expenses=[Expense("Living", 1_000.0, Frequency.YEARLY, ExpenseCategory.ESSENTIAL)],
+            assets=[Asset("Pension", AssetType.DC_PENSION, "Alex", 400_000.0, returns=FixedReal(0.0))],
+            assumptions=Assumptions(life_expectancy_age=90, state_pension_age=99),
+        )
+        joint = IncomeAnnuity(enabled=True, fraction_of_pot=1.0, joint_life_proportion=0.5)
+        single = IncomeAnnuity(enabled=True, fraction_of_pot=1.0)
+
+        def project(annuity):
+            return run(household, Scenario(
+                "s", retirement_dates={"Alex": AS_OF, "Sam": AS_OF},
+                withdrawal=SpendNominal(), death_ages={"Alex": 67},
+                income_annuity=annuity))
+
+        with_spouse, without = project(joint), project(single)
+
+        # Costed and paid: a lower income while both live, and exactly half of
+        # it continuing to Sam afterwards rather than stopping.
+        assert with_spouse.years[0].income_annuity_income < \
+            without.years[0].income_annuity_income
+        assert with_spouse.years[2].alive == frozenset({"Sam"})
+        assert without.years[2].income_annuity_income == 0.0
+        assert with_spouse.years[2].income_annuity_income == pytest.approx(
+            0.5 * with_spouse.years[0].income_annuity_income * joint.real_income_factor(2))
 
 
 class TestSpouseIsaSpillover:

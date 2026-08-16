@@ -40,3 +40,4 @@ workspace/**/*_summary.json
 # tools/build_mortality_csv.py to regenerate (see DATA_SETUP.md).
 src/retireplan/data/*.csv
 src/retireplan/data/mortality/*.csv
+src/retireplan/data/gilts/*.csv

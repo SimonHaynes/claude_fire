@@ -1,6 +1,11 @@
-"""Where every tax and legislation figure came from, and when to look again.
+"""Where every figure in this engine came from, and when to look again.
 
-A constant in this engine is a claim about the law on a date. Without the date
+Tax and legislation mostly, but anything hardcoded that the outside world can
+change belongs here — the annuity calibration and the Bank of England series
+codes are claims about the market on a date in exactly the way a nil-rate band
+is a claim about the law on a date.
+
+A constant in this engine is a claim about the world on a date. Without the date
 it is indistinguishable from a claim about the law today, and a plan built on a
 silently stale figure is wrong in a way nobody can see — which is exactly how a
 2026/27 report ends up quoting a 2024/25 allowance.
@@ -207,6 +212,27 @@ SOURCES: tuple[Source, ...] = (
         checked_on=date(2026, 8, 16),
         recheck_by=NEXT_TAX_YEAR,
         moved_by="money laundering regulations, which change outside the Budget cycle",
+    ),
+    Source(
+        module="retireplan.annuity",
+        covers="the mortality multiplier, illiquidity spread and inflation risk premium "
+               "calibrating annuity pricing to published best-buy rates",
+        url="https://www.hl.co.uk/retirement/annuities/best-buy-rates",
+        checked_on=date(2026, 8, 16),
+        recheck_by=NEXT_TAX_YEAR,
+        moved_by="insurers repricing longevity, not the gilt market — the rate *level* "
+                 "already tracks the fetched curve, so this checks the calibration. "
+                 "tools/validate_annuity_rates.py prints the residual on every cell",
+    ),
+    Source(
+        module="retireplan.annuity",
+        covers="UK nominal gilt par yields and implied inflation at 5, 10 and 20 years",
+        url="https://www.bankofengland.co.uk/boeapps/database/",
+        checked_on=date(2026, 8, 16),
+        recheck_by=BUDGET_FOLLOW_UP,
+        moved_by="the gilt market, daily. Re-run tools/fetch_gilt_yields.py rather than "
+                 "editing anything; what needs rechecking here is that the six BoE "
+                 "series codes still exist and still mean what they say",
     ),
     Source(
         module="retireplan.care",

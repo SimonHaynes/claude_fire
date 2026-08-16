@@ -63,6 +63,7 @@ direction it errs so the bias is visible.
 | Beneficiary marginal rate | 40% | Inherited pension stacks on a working-age salary | — |
 | GIA distribution yield | 2% | Long-run global equity | — |
 | Immediate needs annuity pricing | 3-year impaired expectation, 25% loading | Planning approximation | Overstates the premium |
+| Lifetime annuity real decay | 2%/yr on a level annuity (`IncomeAnnuity.assumed_inflation`) | BoE target | Understates decay if inflation runs hotter |
 | Gift growth rate | 0% (valued as spent on receipt) | Deliberate | Neither; **run both**, the answer flips |
 | "Global equities" / "the market", unspecified | `SampledSeries("global_equity")` — the US-proxy series (S&P 500 + 10yr Treasury, Damodaran/NYU Stern) | Same convention FIRECalc and cFIREsim use: one long, clean, well-understood historical series rather than a constructed global one | Not global; see below before reaching for an alternative |
 

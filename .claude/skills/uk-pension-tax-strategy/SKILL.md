@@ -274,10 +274,12 @@ or the plan overstates the relief remaining.
 buys a lifetime annuity once at first access, from whatever remains after any
 automatic PCLS, taxed as ordinary pension income throughout (unlike
 `ImmediateNeedsAnnuity`, whose fees go tax-free direct to a care provider).
-Single-life: payments stop at that person's death, spouse or no spouse, and
-nothing passes to the estate. This is the safety-first case for a household
-anxious about running out — state the mirror-image trade plainly: money
-committed to an annuity cannot be redirected however circumstances change.
+Priced by `retireplan.annuity` at the buyer's actual age, so annuitising later
+buys a better rate; `joint_life_proportion` keeps a share paying the survivor.
+This is the safety-first case for a household anxious about running out — state
+the mirror-image trade plainly: money committed to an annuity cannot be
+redirected however circumstances change. **The default is level, meaning flat in
+pounds and falling in purchasing power**; `uk-annuities` owns that argument.
 
 ## Estate planning beyond drawdown
 

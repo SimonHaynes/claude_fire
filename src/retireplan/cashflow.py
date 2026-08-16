@@ -527,11 +527,16 @@ def _take_phased_tranche(accounts: _Accounts, year: PlanYear, tranche: float | N
 
 
 def _buy_income_annuity(
-    accounts: _Accounts, annuity, year: PlanYear, bought: dict[str, dict]
+    accounts: _Accounts, annuity, annuity_market, year: PlanYear,
+    bought: dict[str, dict],
 ) -> float:
     """Convert a fraction of each pot into guaranteed income, once, at first
-    access. Returns the premium paid; `bought` records the benefit, which is
-    fixed from that point however the market performs afterwards.
+    access. Returns the premium paid; `bought` records the starting income,
+    which is fixed from that point however the market performs afterwards.
+
+    Priced at the annuitant's actual age, so annuitising later buys a better
+    rate — the trade-off that makes "when" a real question rather than a
+    detail. Sex is not passed: UK annuities have been unisex since 2012.
     """
     premiums = 0.0
     for person, dc in accounts.slots.dc_slots_by_person.items():
@@ -543,7 +548,19 @@ def _buy_income_annuity(
         if premium <= 0:
             continue
         accounts.portfolio.draw_pro_rata(dc, premium)
-        bought[person] = {"benefit": annuity.annual_benefit(premium), "start_index": year.index}
+        spouse = next((p for p in year.ages if p != person), None)
+        options = dataclasses.replace(
+            annuity.options(),
+            spouse_age_offset=(
+                year.ages[spouse] - year.ages[person] if spouse else 0
+            ),
+        )
+        quote = annuity_market.quote(premium, year.ages[person], options=options)
+        bought[person] = {
+            "benefit": quote.annual_income,
+            "start_index": year.index,
+            "spouse": spouse,
+        }
         premiums += premium
     return premiums
 
@@ -551,15 +568,29 @@ def _buy_income_annuity(
 def _annuity_income(
     annuity, bought: dict[str, dict], year: PlanYear, alive: frozenset[str]
 ) -> tuple[PlanYear, float]:
-    """This year's guaranteed annuity income, folded into taxable income."""
+    """This year's guaranteed annuity income, in real terms, taxed as pension.
+
+    The annuity pays a fixed number of *pounds*; this engine counts purchasing
+    power. So a level annuity's contribution falls every year, and only
+    escalation above `assumed_inflation` — or RPI-linking — holds its value.
+
+    Once the annuitant dies a joint-life annuity keeps paying its proportion to
+    the survivor, taxed on them. Pricing the survivor's benefit into the rate
+    and then not paying it would charge the household for cover it never got.
+    """
     total = 0.0
     for person, state in bought.items():
+        recipient, share = person, 1.0
         if person not in alive:
-            continue
-        elapsed = year.index - state["start_index"]
-        benefit = state["benefit"] * (1 + annuity.escalation) ** elapsed
+            spouse = state["spouse"]
+            if not annuity.joint_life_proportion or spouse not in alive:
+                continue
+            recipient, share = spouse, annuity.joint_life_proportion
+        benefit = share * state["benefit"] * annuity.real_income_factor(
+            year.index - state["start_index"]
+        )
         total += benefit
-        year = _with_extra_taxable(year, person, benefit)
+        year = _with_extra_taxable(year, recipient, benefit)
     return year, total
 
 
@@ -649,7 +680,7 @@ def project(
         annuity_income_this_year = 0.0
         if income_annuity is not None and income_annuity.enabled:
             annuity_premium_this_year = _buy_income_annuity(
-                accounts, income_annuity, year, annuities_bought
+                accounts, income_annuity, plan.annuity_market, year, annuities_bought
             )
             year, annuity_income_this_year = _annuity_income(
                 income_annuity, annuities_bought, year, alive

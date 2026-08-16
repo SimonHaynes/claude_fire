@@ -334,6 +334,37 @@ misreading is the commonest expensive error in the area, which is why
 `validate_trust_charges.py` reproduces HMRC's published worked examples to the
 penny rather than trusting the implementation.
 
+## Annuities
+
+`annuity.py` prices a lifetime annuity from the two things that set a real
+quote: the Bank of England gilt curve and a mortality basis. Options — joint
+life, guarantee period, fixed escalation, RPI-linking, enhanced underwriting —
+all fall out of the same annuity factor rather than being separate fudges.
+
+```bash
+.venv/bin/python tools/fetch_gilt_yields.py       # once per clone
+.venv/bin/python tools/annuity_quote.py --premium 200000 --age 65
+.venv/bin/python tools/annuity_quote.py --age 65 --compare
+.venv/bin/python tools/annuity_quote.py --age 65 --history
+.venv/bin/python tools/validate_annuity_rates.py  # parity with a published best-buy table
+```
+
+Three parameters are calibrated to a published best-buy table; the other twenty
+cells of that table are predictions, and the validator prints the residual on
+every one. RMS error is 1.2% against a market whose providers differ by 16% on
+the same day.
+
+Two things the model is there to make visible. **Most of a client's annuity rate
+is the month they bought**: £100,000 at 65 bought £8,645 a year in January 2000,
+£4,741 in July 2020 and £7,855 in August 2026, on the same mortality basis.
+And **a level annuity is nominally flat, not really flat** — at 3% inflation it
+halves in purchasing power in 23 years, inside a 65-year-old's life expectancy.
+`AnnuityQuote.real_income` is the number that belongs in a projection.
+
+`Scenario.income_annuity` prices through this module, at the annuitant's actual
+age in the plan year they buy — so annuitising later buys a better rate, and the
+projection carries the real income rather than the nominal one.
+
 ### Where the figures come from
 
 `tax/provenance.py` records, for every hardcoded rate and threshold, the primary

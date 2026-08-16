@@ -82,6 +82,11 @@ trust. `uk-tax-strategist` hands trusts here rather than improvising, because a
 settlement is a separate taxpayer whose charges do not appear in an estate
 calculation.
 
+**`annuity-strategist`** — whenever guaranteed income is on the table: securing
+a spending floor, how much of a pot to annuitise, joint life and escalation
+choices, or a client asking what their pot "would buy". Rates are a market price
+that moved 82% between 2020 and 2026, so this is never answerable from memory.
+
 **`tax-figure-verifier`** — when `tools/check_tax_freshness.py` flags a figure
 you are about to quote, after a Budget, or at a tax year start. Fetching and
 comparing sources is bulky; take its verdict, not its transcript.

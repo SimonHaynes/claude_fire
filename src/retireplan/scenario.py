@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Mapping
 
+from .annuity import AnnuityOptions
 from .care import CarePlan
 from .model import PensionAccess
 
@@ -82,85 +83,92 @@ class PensionLumpSum:
 
 @dataclass(frozen=True)
 class IncomeAnnuity:
-    """A lifetime annuity bought from a DC pension at retirement -- the
-    "floor" half of Zvi Bodie / Wade Pfau's floor-and-upside (safety-first)
-    approach to retirement income: secure essential spending with guaranteed
-    income first, then invest whatever remains for upside.
+    """A lifetime annuity bought from a DC pension at first pension access.
 
-    Distinct from `care.ImmediateNeedsAnnuity`, which is a short, impaired-life
-    annuity bought at the point of entering care and paid tax-free direct to
-    the care provider. This is an ordinary lifetime annuity bought at a normal
-    (unimpaired) life expectancy, and its income is taxed exactly like any
-    other pension income, because that is what it is under UK rules.
+    The "floor" half of floor-and-upside: secure essential spending with
+    guaranteed income, then invest what remains for upside. Annuitised money is
+    gone in exchange for the income stream — which is the point as much as the
+    cost, since nothing else removes longevity risk.
 
-    Single-life, bought once at first pension access: payments stop outright
-    when the annuitant dies, with nothing passed to the estate -- annuitised
-    money is gone in exchange for the income stream, which is the actual
-    trade-off it protects against (running out of money) as much as it is a
-    cost (nothing left to leave). No joint-life or guarantee-period option is
-    modelled; a household that specifically wants the lower income a
-    joint-life or guaranteed annuity would buy needs a different figure
-    supplied by hand.
+    Distinct from `care.ImmediateNeedsAnnuity`, which is a short impaired-life
+    annuity bought on entering care and paid tax-free direct to the provider.
+    This one's income is ordinary taxable pension income.
 
-    Bought from whatever remains of the pot *after* any `PensionAccess.PCLS`
-    tax-free cash has already been taken (if the scenario uses PCLS) -- the
-    common real-world order of "take the tax-free cash, then annuitise part
-    of what's left" -- so `fraction_of_pot` applies to the pot as it stands
-    at the point this fires, not to the pot's original, pre-PCLS size.
+    Bought from whatever remains *after* any `PensionAccess.PCLS` cash, so
+    `fraction_of_pot` applies to the pot as it stands when this fires.
 
-    Pricing is a planning approximation, same style and same reason as
-    `ImmediateNeedsAnnuity`: a real quote is medically underwritten and this
-    model has no way to know an individual's health, and it is not discounted
-    for the insurer's own investment return on the premium, which is
-    conservative for the buyer -- a real insurer prices in that return, so a
-    real quote would buy more income than this estimates.
+    Priced by `retireplan.annuity` from the gilt curve and a mortality basis at
+    the annuitant's actual age. The one thing that needs stating here is
+    `assumed_inflation`, because this engine works in real terms and **the
+    market sells nominal annuities**: a level annuity is flat in pounds and
+    therefore falling in purchasing power every year it is paid.
     """
 
     enabled: bool = False
     fraction_of_pot: float = 0.0
-    """Fraction of the DC pot to annuitise at first access. The rest stays
-    invested for upside -- annuitise only what is needed to cover the floor,
-    not the whole pot, or there is no upside left to invest."""
+    """Fraction of the DC pot to annuitise. Annuitise the floor, not the whole
+    pot, or there is no upside left to invest."""
 
-    life_expectancy_years: float = 25.0
-    """Flat planning figure, deliberately independent of the household's own
-    mortality model (`FixedAge`/`LifeTable`) so an annuity comparison is not
-    silently coupled to whichever assumption the rest of the plan happens to
-    use -- state a specific figure on purpose, the same way
-    `ImmediateNeedsAnnuity` does."""
+    joint_life_proportion: float = 0.0
+    """Fraction of the income continuing to a surviving spouse. 0 leaves the
+    survivor nothing, which is the right default only for a single person."""
 
-    loading: float = 1.15
-    """Insurer's margin over a break-even price. Lower than
-    `ImmediateNeedsAnnuity`'s default 1.25: that annuity prices a short,
-    impaired-life risk with wide uncertainty, where insurers charge more for
-    that uncertainty; this one prices a long, unimpaired life, a market
-    insurers compete harder on."""
-
+    guarantee_years: int = 0
     escalation: float = 0.0
-    """Annual real escalation of the income once in payment. Zero buys a
-    level (flat real) annuity -- the common choice, since an escalating
-    annuity starts markedly lower for the same premium."""
+    """Fixed *nominal* increase each year. Note the change of frame from the
+    rest of this engine: 0 buys a level annuity, which declines in real terms
+    at `assumed_inflation`, and only escalation above that grows in real
+    terms."""
 
-    def annual_benefit(self, premium: float) -> float:
-        """Annual income `premium` buys -- the inverse of
-        `ImmediateNeedsAnnuity.premium`: given the money, what income does it
-        secure, rather than given the income, what money does it cost."""
-        years = self.life_expectancy_years
-        if years <= 0:
-            return 0.0
-        if self.escalation:
-            factor = sum((1 + self.escalation) ** t for t in range(int(years) + 1))
-        else:
-            factor = years
-        return premium / (factor * self.loading)
+    rpi_linked: bool = False
+    """Income rises with prices, so it is flat in real terms. Costs about 30%
+    of the starting income against level."""
+
+    health_uplift: float = 0.0
+    """Enhanced underwriting, as a fraction added to the income. Only a real
+    underwriter can price this; the model applies what it is told."""
+
+    assumed_inflation: float = 0.02
+    """What a level annuity's income loses in real terms each year.
+
+    Non-zero by default, and deliberately not tied to `FiscalDrag.inflation`:
+    that governs whether *announced threshold freezes* are modelled and is
+    opt-in, whereas a nominal annuity decaying in a real-terms projection is
+    arithmetic rather than a policy assumption. 2% is the Bank of England
+    target, matching `standard-assumptions`."""
+
+    def options(self) -> "AnnuityOptions":
+        return AnnuityOptions(
+            joint_life_proportion=self.joint_life_proportion,
+            guarantee_years=self.guarantee_years,
+            escalation=self.escalation,
+            rpi_linked=self.rpi_linked,
+            health_uplift=self.health_uplift,
+        )
+
+    def real_income_factor(self, years_in_payment: int) -> float:
+        """Multiplier on the starting income, in today's money.
+
+        RPI-linking holds real value by construction. Anything else drifts at
+        the gap between its nominal escalation and inflation — downwards for a
+        level annuity, which is the fact this method exists to stop anyone
+        forgetting.
+        """
+        if self.rpi_linked:
+            return 1.0
+        drift = (1 + self.escalation) / (1 + self.assumed_inflation)
+        return drift ** years_in_payment
 
     def spec(self) -> dict:
         return {
             "enabled": self.enabled,
             "fraction_of_pot": self.fraction_of_pot,
-            "life_expectancy_years": self.life_expectancy_years,
-            "loading": self.loading,
+            "joint_life_proportion": self.joint_life_proportion,
+            "guarantee_years": self.guarantee_years,
             "escalation": self.escalation,
+            "rpi_linked": self.rpi_linked,
+            "health_uplift": self.health_uplift,
+            "assumed_inflation": self.assumed_inflation,
         }
 
 
