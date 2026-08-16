@@ -61,7 +61,14 @@ from the fabricated household in `workspace/sample_client/`:
 
 <p align="center"><img src="docs/results.png" width="720" alt="Results table — success probability dial, median spend, worst case, and net-to-heirs range for each scenario"></p>
 
-<p align="center"><img src="docs/fan-charts.png" width="720" alt="ISA balance fan chart, widening from £0 to a £26M 95th-percentile by the end of the plan"></p>
+<p align="center"><img src="docs/cashflow.png" width="720" alt="Where each year's money comes from — one stacked bar per year from 2026 to 2066, coloured by source: employment, then pension drawdown, then State Pension and ISA/GIA withdrawals, with lines for income after tax, total spending and essentials"></p>
+
+Salary stops, the pension carries the next decade alone, the State Pension
+arrives, and the ISA takes over — with the after-tax line and the spending
+lines over the top, so the tax bill is the gap between them. That is the whole
+plan in one picture, and it is the page clients actually read.
+
+<p align="center"><img src="docs/fan-charts.png" width="720" alt="ISA balance fan chart, widening from £0 to a £28.5M 95th-percentile band with a £4.5M median by the end of the plan"></p>
 
 Nobody's real numbers — see [Workspace](#workspace) to generate your own.
 
@@ -126,8 +133,8 @@ cd claude_fire
 claude
 ```
 
-> set this repo up: create the venv, install the package, and build the market
-> and mortality data
+> set this repo up: create the venv, install the package, and build the market,
+> mortality and gilt data
 
 It builds the virtualenv, installs `.[report,dev]`, fetches the data and runs
 the tests — and if a step fails, it can read the error and fix
@@ -142,7 +149,8 @@ python -m venv .venv                                  # .venv\Scripts\ on native
 .venv/bin/pip install -e ".[report,dev]"
 .venv/bin/python tools/fetch_market_data.py
 .venv/bin/python tools/build_mortality_csv.py --fetch
-.venv/bin/python -m pytest                            # ~500 tests, a few seconds
+.venv/bin/python tools/fetch_gilt_yields.py
+.venv/bin/python -m pytest                            # ~800 tests, a few seconds
 ```
 
 `report` adds jinja2, weasyprint and pymupdf — for building the PDF and for
@@ -155,7 +163,8 @@ is dependency-free.
 different terms and some do not permit redistribution, so every clone fetches
 its own copy (see [Data](#data) for the per-source position). No API key is
 needed: returns and inflation both come from Damodaran's dataset at NYU Stern,
-and the mortality tables from ONS.
+the mortality tables from ONS, and the gilt curve behind annuity pricing from
+the Bank of England.
 
 **Optionally**, a free [FRED key](https://fredaccount.stlouisfed.org/apikeys)
 in `.env` adds one more file, the NBER recession series. It is worth having
